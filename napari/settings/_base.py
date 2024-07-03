@@ -102,10 +102,13 @@ class EventedConfigFileSettings(EventedSettings, PydanticYamlMixin):
         super().__init__(**values)
         self._config_path = _cfg
 
-    def _on_sub_event(self, event, field=None):
-        super()._on_sub_event(event, field)
+    def _maybe_save(self):
         if self._save_on_change and self.config_path:
             self.save()
+
+    def _on_sub_event(self, event, field=None):
+        super()._on_sub_event(event, field)
+        self._maybe_save()
 
     @property
     def config_path(self):
@@ -311,7 +314,11 @@ def nested_env_settings(
                         env_val = settings.__config__.json_loads(env_val)
                     except ValueError as e:
                         if not all_json_fail:
-                            msg = f'error parsing JSON for "{env_name}"'
+                            msg = trans._(
+                                'error parsing JSON for "{env_name}"',
+                                deferred=True,
+                                env_name=env_name,
+                            )
                             raise SettingsError(msg) from e
 
                     if isinstance(env_val, dict):
