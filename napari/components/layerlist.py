@@ -166,6 +166,13 @@ class LayerList(SelectableEventedList[Layer]):
         new_layer.events.extent.connect(self._clean_cache)
         super().insert(index, new_layer)
 
+    def remove_selected(self):
+        """Remove selected layers from LayerList, but first unlink them."""
+        if not self.selection:
+            return
+        self.unlink_layers(self.selection)
+        super().remove_selected()
+
     def toggle_selected_visibility(self):
         """Toggle visibility of selected layers"""
         for layer in self.selection:
@@ -345,10 +352,7 @@ class LayerList(SelectableEventedList[Layer]):
         min_v, max_v = self._get_min_and_max(mins, maxs)
 
         # form range tuples, switching back to original dimension order
-        return [
-            (start, stop, step)
-            for start, stop, step in zip(min_v, max_v, min_steps)
-        ]
+        return list(zip(min_v, max_v, min_steps))
 
     @property
     def ndim(self) -> int:

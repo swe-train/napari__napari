@@ -2,9 +2,9 @@ import json
 from enum import EnumMeta
 from typing import TYPE_CHECKING, Tuple, cast
 
-from pydantic.main import BaseModel, ModelMetaclass
 from qtpy.QtCore import QSize, Qt, Signal
 from qtpy.QtWidgets import (
+    QApplication,
     QDialog,
     QHBoxLayout,
     QListWidget,
@@ -14,10 +14,10 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
 )
 
+from napari._pydantic_compat import BaseModel, ModelField, ModelMetaclass
 from napari.utils.translations import trans
 
 if TYPE_CHECKING:
-    from pydantic.fields import ModelField
     from qtpy.QtGui import QCloseEvent, QKeyEvent
 
 
@@ -210,12 +210,23 @@ class PreferencesDialog(QDialog):
 
     def _restore_default_dialog(self):
         """Launches dialog to confirm restore settings choice."""
+        prev = QApplication.instance().testAttribute(
+            Qt.ApplicationAttribute.AA_DontUseNativeDialogs
+        )
+        QApplication.instance().setAttribute(
+            Qt.ApplicationAttribute.AA_DontUseNativeDialogs, True
+        )
+
         response = QMessageBox.question(
             self,
             trans._("Restore Settings"),
             trans._("Are you sure you want to restore default settings?"),
-            QMessageBox.RestoreDefaults | QMessageBox.Cancel,
-            QMessageBox.RestoreDefaults,
+            QMessageBox.StandardButton.RestoreDefaults
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.RestoreDefaults,
+        )
+        QApplication.instance().setAttribute(
+            Qt.ApplicationAttribute.AA_DontUseNativeDialogs, prev
         )
         if response == QMessageBox.RestoreDefaults:
             self._settings.reset()

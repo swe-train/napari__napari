@@ -125,6 +125,8 @@ class _QtMainWindow(QMainWindow):
         self.setWindowTitle(self._qt_viewer.viewer.title)
 
         self._maximized_flag = False
+        self._fullscreen_flag = False
+        self._normal_geometry = QRect()
         self._window_size = None
         self._window_pos = None
         self._old_size = None
@@ -212,16 +214,74 @@ class _QtMainWindow(QMainWindow):
                 else e.globalPos()
             )
             QToolTip.showText(pnt, self._qt_viewer.viewer.tooltip.text, self)
-        if e.type() == QEvent.Type.Close:
-            # when we close the MainWindow, remove it from the instances list
-            with contextlib.suppress(ValueError):
-                _QtMainWindow._instances.remove(self)
         if e.type() in {QEvent.Type.WindowActivate, QEvent.Type.ZOrderChange}:
             # upon activation or raise_, put window at the end of _instances
             with contextlib.suppress(ValueError):
                 inst = _QtMainWindow._instances
                 inst.append(inst.pop(inst.index(self)))
-        return super().event(e)
+
+        res = super().event(e)
+
+        if e.type() == QEvent.Type.Close and e.isAccepted():
+            # when we close the MainWindow, remove it from the instance list
+            with contextlib.suppress(ValueError):
+                _QtMainWindow._instances.remove(self)
+
+        return res
+
+    def isFullScreen(self):
+        # Needed to prevent errors when going to fullscreen mode on Windows
+        # Use a flag attribute to determine if the window is in full screen mode
+        # See https://bugreports.qt.io/browse/QTBUG-41309
+        # Based on https://github.com/spyder-ide/spyder/pull/7720
+        return self._fullscreen_flag
+
+    def showNormal(self):
+        # Needed to prevent errors when going to fullscreen mode on Windows. Here we:
+        #   * Set fullscreen flag
+        #   * Remove `Qt.FramelessWindowHint` and `Qt.WindowStaysOnTopHint` window flags if needed
+        #   * Set geometry to previously stored normal geometry or default empty QRect
+        # Always call super `showNormal` to set Qt window state
+        # See https://bugreports.qt.io/browse/QTBUG-41309
+        # Based on https://github.com/spyder-ide/spyder/pull/7720
+        self._fullscreen_flag = False
+        if os.name == 'nt':
+            self.setWindowFlags(
+                self.windowFlags()
+                ^ (Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+            )
+            self.setGeometry(self._normal_geometry)
+        super().showNormal()
+
+    def showFullScreen(self):
+        # Needed to prevent errors when going to fullscreen mode on Windows. Here we:
+        #   * Set fullscreen flag
+        #   * Add `Qt.FramelessWindowHint` and `Qt.WindowStaysOnTopHint` window flags if needed
+        #   * Call super `showNormal` to update the normal screen geometry to apply it later if needed
+        #   * Save window normal geometry if needed
+        #   * Get screen geometry
+        #   * Set geometry window to use total screen geometry +1 in every direction if needed
+        # If the workaround is not needed just call super `showFullScreen`
+        # See https://bugreports.qt.io/browse/QTBUG-41309
+        # Based on https://github.com/spyder-ide/spyder/pull/7720
+        self._fullscreen_flag = True
+        if os.name == 'nt':
+            self.setWindowFlags(
+                self.windowFlags()
+                | Qt.FramelessWindowHint
+                | Qt.WindowStaysOnTopHint
+            )
+            super().showNormal()
+            self._normal_geometry = self.normalGeometry()
+            screen_rect = self.windowHandle().screen().geometry()
+            self.setGeometry(
+                screen_rect.left() - 1,
+                screen_rect.top() - 1,
+                screen_rect.width() + 2,
+                screen_rect.height() + 2,
+            )
+        else:
+            super().showFullScreen()
 
     def eventFilter(self, source, event):
         # Handle showing hidden menubar on mouse move event.
@@ -329,8 +389,8 @@ class _QtMainWindow(QMainWindow):
             self._qt_viewer.dockConsole.setVisible(False)
 
         if window_fullscreen:
-            self.setWindowState(Qt.WindowState.WindowFullScreen)
             self._maximized_flag = window_maximized
+            self.showFullScreen()
         elif window_maximized:
             self.setWindowState(Qt.WindowState.WindowMaximized)
 
@@ -432,6 +492,32 @@ class _QtMainWindow(QMainWindow):
                 self._positions = []
 
         super().changeEvent(event)
+
+    def keyPressEvent(self, event):
+        """Called whenever a key is pressed.
+
+        Parameters
+        ----------
+        event : qtpy.QtCore.QEvent
+            Event from the Qt context.
+        """
+        self._qt_viewer.canvas._backend._keyEvent(
+            self._qt_viewer.canvas.events.key_press, event
+        )
+        event.accept()
+
+    def keyReleaseEvent(self, event):
+        """Called whenever a key is released.
+
+        Parameters
+        ----------
+        event : qtpy.QtCore.QEvent
+            Event from the Qt context.
+        """
+        self._qt_viewer.canvas._backend._keyEvent(
+            self._qt_viewer.canvas.events.key_release, event
+        )
+        event.accept()
 
     def resizeEvent(self, event):
         """Override to handle original size before maximizing."""
@@ -679,7 +765,7 @@ class Window:
     def qt_viewer(self):
         warnings.warn(
             trans._(
-                'Public access to Window.qt_viewer is deprecated and will be removed in\nv0.5.0. It is considered an "implementation detail" of the napari\napplication, not part of the napari viewer model. If your use case\nrequires access to qt_viewer, please open an issue to discuss.',
+                'Public access to Window.qt_viewer is deprecated and will be removed in\nv0.6.0. It is considered an "implementation detail" of the napari\napplication, not part of the napari viewer model. If your use case\nrequires access to qt_viewer, please open an issue to discuss.',
                 deferred=True,
             ),
             category=FutureWarning,

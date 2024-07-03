@@ -91,7 +91,11 @@ ignore = [
     "RUF005", # problem with numpy compatybility, see https://github.com/charliermarsh/ruff/issues/2142#issuecomment-1451038741
     "B028", # need to be fixed
     "PYI015", # it produces bad looking files (@jni opinion)
-
+    "RUF012",
+    "RUF013",
+    "RUF015",
+    "PYI041",
+    "PYI024",
 ]
 
 exclude = [
@@ -126,7 +130,7 @@ fix = true
 "napari/utils/_testsupport.py" = ["B011"]
 "tools/test_strings.py" = ["F401"]
 "tools/**" = ["INP001", "T20"]
-"examples/**" = ["INP001", "T20"]
+"examples/**" = ["ICN001", "INP001", "T20"]
 "**/vendored/**" = ["TID"]
 
 [tool.ruff.flake8-quotes]
@@ -150,6 +154,7 @@ xarray = "xr"
 # These follow standard library warnings filters syntax.  See more here:
 # https://docs.python.org/3/library/warnings.html#describing-warning-filters
 addopts = "--maxfail=5 --durations=10 -rXxs"
+pystack_threshold=60
 
 # NOTE: only put things that will never change in here.
 # napari deprecation and future warnings should NOT go in here.
@@ -172,6 +177,7 @@ filterwarnings = [
   "ignore:Alternative shading modes are only available in 3D, defaulting to none",
   "ignore:distutils Version classes are deprecated::",
   "ignore:There is no current event loop:DeprecationWarning:",
+  "ignore:(?s).*Pyarrow will become a required dependency of pandas:DeprecationWarning",  # pandas pyarrow (pandas<3.0),
 ]
 markers = [
     "sync_only: Test should only be run synchronously",

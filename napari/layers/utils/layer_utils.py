@@ -494,7 +494,7 @@ def _validate_property_choices(property_choices):
 
 
 def _coerce_current_properties_value(
-    value: Union[float, str, int, bool, list, tuple, np.ndarray]
+    value: Union[float, str, bool, list, tuple, np.ndarray]
 ) -> np.ndarray:
     """Coerce a value in a current_properties dictionary into the correct type.
 
@@ -863,7 +863,7 @@ class _FeatureTable:
         self._defaults = _validate_features(currents, num_data=1)
         if update_indices is not None:
             for k in self._defaults:
-                self._values[k][update_indices] = self._defaults[k][0]
+                self._values.loc[update_indices, k] = self._defaults[k][0]
 
     def resize(
         self,
@@ -972,7 +972,7 @@ def _get_default_column(column: pd.Series) -> pd.Series:
         # store missing values, so passing None creates an np.float64 series
         # containing NaN. Therefore, use a default of 0 instead.
         value = 0
-    return pd.Series(data=value, dtype=column.dtype, index=range(1))
+    return pd.Series(data=[value], dtype=column.dtype, index=range(1))
 
 
 def _validate_features(

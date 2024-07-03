@@ -6,6 +6,7 @@ from qtpy.QtCore import QEvent, QPoint, Qt, Signal
 from qtpy.QtGui import QKeySequence
 from qtpy.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QComboBox,
     QHBoxLayout,
     QItemDelegate,
@@ -134,13 +135,22 @@ class ShortcutEditor(QWidget):
 
     def restore_defaults(self):
         """Launches dialog to confirm restore choice."""
-
+        prev = QApplication.instance().testAttribute(
+            Qt.ApplicationAttribute.AA_DontUseNativeDialogs
+        )
+        QApplication.instance().setAttribute(
+            Qt.ApplicationAttribute.AA_DontUseNativeDialogs, True
+        )
         response = QMessageBox.question(
             self,
             trans._("Restore Shortcuts"),
             trans._("Are you sure you want to restore default shortcuts?"),
-            QMessageBox.RestoreDefaults | QMessageBox.Cancel,
-            QMessageBox.RestoreDefaults,
+            QMessageBox.StandardButton.RestoreDefaults
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.RestoreDefaults,
+        )
+        QApplication.instance().setAttribute(
+            Qt.ApplicationAttribute.AA_DontUseNativeDialogs, prev
         )
 
         if response == QMessageBox.RestoreDefaults:
@@ -612,7 +622,7 @@ class EditorWidget(QLineEdit):
         event_keystr = event_keyseq.toString(QKeySequence.PortableText)
 
         # Split the shortcut if it contains a symbol.
-        parsed = re.split('[-(?=.+)]', event_keystr)
+        parsed = re.split(r'[-+](?=.+)', event_keystr)
 
         keys_li = []
         # Format how the shortcut is written (ex. 'Ctrl+B' is changed to 'Control-B')

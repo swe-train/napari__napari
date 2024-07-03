@@ -7,8 +7,8 @@ from typing import (
 )
 
 import numpy as np
-from pydantic import root_validator, validator
 
+from napari._pydantic_compat import root_validator, validator
 from napari.utils.events import EventedModel
 from napari.utils.misc import argsort, reorder_after_dim_reduction
 from napari.utils.translations import trans
@@ -231,7 +231,7 @@ class Dims(EventedModel):
     def set_point(
         self,
         axis: Union[int, Sequence[int]],
-        value: Union[Union[int, float], Sequence[Union[int, float]]],
+        value: Union[float, Sequence[float]],
     ):
         """Sets point to slice dimension in world coordinates.
 

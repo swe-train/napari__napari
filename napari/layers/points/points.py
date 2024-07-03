@@ -360,8 +360,15 @@ class Points(Layer):
         antialiasing=1,
         shown=True,
     ) -> None:
-        if ndim is None and scale is not None:
-            ndim = len(scale)
+        if ndim is None:
+            if scale is not None:
+                ndim = len(scale)
+            elif (
+                data is not None
+                and hasattr(data, 'shape')
+                and len(data.shape) == 2
+            ):
+                ndim = data.shape[1]
 
         data, ndim = fix_data_points(data, ndim)
 
@@ -523,6 +530,42 @@ class Points(Layer):
 
     @data.setter
     def data(self, data: Optional[np.ndarray]):
+        """Set the data array and emit a corresponding event."""
+        prior_data = len(self.data) > 0
+        data_not_empty = (
+            data is not None
+            and (isinstance(data, np.ndarray) and data.size > 0)
+            or (isinstance(data, list) and len(data) > 0)
+        )
+        kwargs = {
+            "value": self.data,
+            "vertex_indices": ((),),
+            "data_indices": tuple(i for i in range(len(self.data))),
+        }
+        if prior_data and data_not_empty:
+            kwargs["action"] = ActionType.CHANGING
+        elif data_not_empty:
+            kwargs["action"] = ActionType.ADDING
+            kwargs["data_indices"] = tuple(i for i in range(len(data)))
+        else:
+            kwargs["action"] = ActionType.REMOVING
+
+        self.events.data(**kwargs)
+        self._set_data(data)
+        kwargs["data_indices"] = tuple(i for i in range(len(self.data)))
+        kwargs["value"] = self.data
+
+        if prior_data and data_not_empty:
+            kwargs["action"] = ActionType.CHANGED
+        elif data_not_empty:
+            kwargs["data_indices"] = tuple(i for i in range(len(data)))
+            kwargs["action"] = ActionType.ADDED
+        else:
+            kwargs["action"] = ActionType.REMOVED
+        self.events.data(**kwargs)
+
+    def _set_data(self, data: Optional[np.ndarray]):
+        """Set the .data array attribute, without emitting an event."""
         data, _ = fix_data_points(data, self.ndim)
         cur_npoints = len(self._data)
         self._data = data
@@ -582,7 +625,6 @@ class Points(Layer):
                     (self._edge_width, edge_width), axis=0
                 )
                 self.symbol = np.concatenate((self._symbol, symbol), axis=0)
-                self.selected_data = set(np.arange(cur_npoints, len(data)))
 
         self._update_dims()
         self._reset_editable()
@@ -744,7 +786,20 @@ class Points(Layer):
             maxs = np.max(self.data, axis=0)
             mins = np.min(self.data, axis=0)
             extrema = np.vstack([mins, maxs])
-        return extrema
+        return extrema.astype(float)
+
+    @property
+    def _extent_data_augmented(self):
+        # _extent_data is a property that returns a new/copied array, which
+        # is safe to modify below
+        extent = self._extent_data
+        if len(self.size) == 0:
+            return extent
+
+        max_point_size = np.max(self.size)
+        extent[0] -= max_point_size / 2
+        extent[1] += max_point_size / 2
+        return extent
 
     @property
     def out_of_slice_display(self) -> bool:
@@ -801,7 +856,7 @@ class Points(Layer):
         return self._size
 
     @size.setter
-    def size(self, size: Union[int, float, np.ndarray, list]) -> None:
+    def size(self, size: Union[float, np.ndarray, list]) -> None:
         try:
             self._size = np.broadcast_to(size, len(self.data)).copy()
         except ValueError as e:
@@ -931,9 +986,7 @@ class Points(Layer):
         return self._edge_width
 
     @edge_width.setter
-    def edge_width(
-        self, edge_width: Union[int, float, np.ndarray, list]
-    ) -> None:
+    def edge_width(self, edge_width: Union[float, np.ndarray, list]) -> None:
         # broadcast to np.array
         edge_width = np.broadcast_to(edge_width, self.data.shape[0]).copy()
 
@@ -1535,6 +1588,16 @@ class Points(Layer):
         if not self.editable:
             self.mode = Mode.PAN_ZOOM
 
+    def _update_draw(
+        self, scale_factor, corner_pixels_displayed, shape_threshold
+    ):
+        prev_scale = self.scale_factor
+        super()._update_draw(
+            scale_factor, corner_pixels_displayed, shape_threshold
+        )
+        # update highlight only if scale has changed, otherwise causes a cycle
+        self._set_highlight(force=(prev_scale != self.scale_factor))
+
     def _slice_data(
         self, dims_indices
     ) -> Tuple[List[int], Union[float, np.ndarray]]:
@@ -1616,10 +1679,10 @@ class Points(Layer):
             # Without this implementation, point hover and selection (and anything depending
             # on self.get_value()) won't be aware of the real extent of points, causing
             # unexpected behaviour. See #3734 for details.
+            sizes = np.expand_dims(self._view_size, axis=1) / scale_ratio / 2
             distances = abs(view_data - displayed_position)
             in_slice_matches = np.all(
-                distances
-                <= np.expand_dims(self._view_size, axis=1) / scale_ratio / 2,
+                distances <= sizes,
                 axis=1,
             )
             indices = np.where(in_slice_matches)[0]
@@ -1676,10 +1739,10 @@ class Points(Layer):
         # so we need to calculate the ratio to correctly map to screen coordinates
         scale_ratio = self.scale[self._slice_input.displayed] / self.scale[-1]
         # find the points the click intersects
+        sizes = np.expand_dims(self._view_size, axis=1) / scale_ratio / 2
         distances = abs(rotated_points - rotated_click_point)
         in_slice_matches = np.all(
-            distances
-            <= np.expand_dims(self._view_size, axis=1) / scale_ratio / 2,
+            distances <= sizes,
             axis=1,
         )
         indices = np.where(in_slice_matches)[0]
@@ -1693,21 +1756,21 @@ class Points(Layer):
             selection = None
         return selection
 
-    def _display_bounding_box_augmented(self, dims_displayed: np.ndarray):
-        """An augmented, axis-aligned (ndisplay, 2) bounding box.
-
-        This bounding box for includes the full size of displayed points
-        and enables calculation of intersections in `Layer._get_value_3d()`.
-        """
-        if len(self._view_size) == 0:
-            return None
-        max_point_size = np.max(self._view_size)
-        bounding_box = np.copy(
-            self._display_bounding_box(dims_displayed)
-        ).astype(float)
-        bounding_box[:, 0] -= max_point_size / 2
-        bounding_box[:, 1] += max_point_size / 2
-        return bounding_box
+    # def _display_bounding_box_augmented(self, dims_displayed: np.ndarray):
+    #     """An augmented, axis-aligned (ndisplay, 2) bounding box.
+    #
+    #     This bounding box for includes the full size of displayed points
+    #     and enables calculation of intersections in `Layer._get_value_3d()`.
+    #     """
+    #     if len(self._view_size) == 0:
+    #         return None
+    #     max_point_size = np.max(self._view_size)
+    #     bounding_box = np.copy(
+    #         self._display_bounding_box(dims_displayed)
+    #     ).astype(float)
+    #     bounding_box[:, 0] -= max_point_size / 2
+    #     bounding_box[:, 1] += max_point_size / 2
+    #     return bounding_box
 
     def get_ray_intersections(
         self,
@@ -1815,7 +1878,7 @@ class Points(Layer):
             and np.all(self._drag_box == self._drag_box_stored)
         ) and not force:
             return
-        self._selected_data_stored = copy(self.selected_data)
+        self._selected_data_stored = Selection(self.selected_data)
         self._value_stored = copy(self._value)
         self._drag_box_stored = copy(self._drag_box)
 
@@ -1917,19 +1980,35 @@ class Points(Layer):
         coords : array
             Point or points to add to the layer data.
         """
-        self.data = np.append(self.data, np.atleast_2d(coords), axis=0)
+        cur_points = len(self.data)
         self.events.data(
             value=self.data,
-            action=ActionType.ADD.value,
+            action=ActionType.ADDING,
             data_indices=(-1,),
             vertex_indices=((),),
         )
+        self._set_data(np.append(self.data, np.atleast_2d(coords), axis=0))
+        self.events.data(
+            value=self.data,
+            action=ActionType.ADDED,
+            data_indices=(-1,),
+            vertex_indices=((),),
+        )
+        self.selected_data = set(np.arange(cur_points, len(self.data)))
 
     def remove_selected(self):
         """Removes selected points if any."""
         index = list(self.selected_data)
         index.sort()
         if len(index):
+            self.events.data(
+                value=self.data,
+                action=ActionType.REMOVING,
+                data_indices=tuple(
+                    self.selected_data,
+                ),
+                vertex_indices=((),),
+            )
             self._shown = np.delete(self._shown, index, axis=0)
             self._size = np.delete(self._size, index, axis=0)
             self._symbol = np.delete(self._symbol, index, axis=0)
@@ -1951,10 +2030,10 @@ class Points(Layer):
                     self._value -= offset
                     self._value_stored -= offset
 
-            self.data = np.delete(self.data, index, axis=0)
+            self._set_data(np.delete(self.data, index, axis=0))
             self.events.data(
                 value=self.data,
-                action=ActionType.REMOVE.value,
+                action=ActionType.REMOVED,
                 data_indices=tuple(
                     self.selected_data,
                 ),
@@ -1986,12 +2065,12 @@ class Points(Layer):
                 self.data[np.ix_(selection_indices, disp)] + shift
             )
             self.refresh()
-        self.events.data(
-            value=self.data,
-            action=ActionType.CHANGE.value,
-            data_indices=tuple(selection_indices),
-            vertex_indices=((),),
-        )
+            self.events.data(
+                value=self.data,
+                action=ActionType.CHANGED,
+                data_indices=tuple(selection_indices),
+                vertex_indices=((),),
+            )
 
     def _set_drag_start(
         self,
