@@ -6,7 +6,6 @@ from qtpy.QtCore import QEvent, QPoint, Qt, Signal
 from qtpy.QtGui import QKeySequence
 from qtpy.QtWidgets import (
     QAbstractItemView,
-    QApplication,
     QComboBox,
     QHBoxLayout,
     QItemDelegate,
@@ -135,22 +134,13 @@ class ShortcutEditor(QWidget):
 
     def restore_defaults(self):
         """Launches dialog to confirm restore choice."""
-        prev = QApplication.instance().testAttribute(
-            Qt.ApplicationAttribute.AA_DontUseNativeDialogs
-        )
-        QApplication.instance().setAttribute(
-            Qt.ApplicationAttribute.AA_DontUseNativeDialogs, True
-        )
+
         response = QMessageBox.question(
             self,
             trans._("Restore Shortcuts"),
             trans._("Are you sure you want to restore default shortcuts?"),
-            QMessageBox.StandardButton.RestoreDefaults
-            | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.RestoreDefaults,
-        )
-        QApplication.instance().setAttribute(
-            Qt.ApplicationAttribute.AA_DontUseNativeDialogs, prev
+            QMessageBox.RestoreDefaults | QMessageBox.Cancel,
+            QMessageBox.RestoreDefaults,
         )
 
         if response == QMessageBox.RestoreDefaults:

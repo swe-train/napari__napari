@@ -107,10 +107,7 @@ def _unlink_selected_layers(ll: LayerList):
 
 
 def _select_linked_layers(ll: LayerList):
-    linked_layers_in_list = [
-        x for x in get_linked_layers(*ll.selection) if x in ll
-    ]
-    ll.selection.update(linked_layers_in_list)
+    ll.selection.update(get_linked_layers(*ll.selection))
 
 
 def _convert_dtype(ll: LayerList, mode='int64'):

@@ -81,7 +81,7 @@ class VispyShapesLayer(VispyBaseLayer):
             face_color,
             edge_color,
             pos,
-            _,
+            width,
         ) = self.layer._compute_vertices_and_box()
 
         width = settings.appearance.highlight_thickness

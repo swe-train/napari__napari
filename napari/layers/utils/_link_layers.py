@@ -191,20 +191,7 @@ def layers_linked(layers: Iterable[Layer], attributes: Iterable[str] = ()):
 def _get_common_evented_attributes(
     layers: Iterable[Layer],
     exclude: abc.Set[str] = frozenset(
-        (
-            'thumbnail',
-            'status',
-            'name',
-            'mode',
-            'data',
-            'features',
-            'properties',
-            'edge_width',
-            'edge_color',
-            'face_color',
-            'extent',
-            'loaded',
-        )
+        ('thumbnail', 'status', 'name', 'data', 'extent', 'loaded')
     ),
     with_private=False,
 ) -> set[str]:
@@ -220,7 +207,7 @@ def _get_common_evented_attributes(
         A set of layers to evaluate for attribute linking.
     exclude : set, optional
         Layer attributes that make no sense to link, or may error on changing.
-        {'thumbnail', 'status', 'name', 'mode', 'data', 'features', 'properties', 'extent', 'loaded'}
+        {'thumbnail', 'status', 'name', 'data'}
     with_private : bool, optional
         include private attributes
 

@@ -1,5 +1,7 @@
 (getting_started)=
-# How to launch napari
+# Getting started with napari
+
+Welcome to the getting started with **napari** tutorial!
 
 This tutorial assumes you have already installed napari.
 For help with installation see our [installation tutorial](./installation).

@@ -3,7 +3,6 @@
 # or the napari documentation on benchmarking
 # https://github.com/napari/napari/blob/main/docs/BENCHMARKS.md
 import os
-from copy import copy
 
 import numpy as np
 
@@ -13,45 +12,43 @@ from napari.layers import Labels
 class Labels2DSuite:
     """Benchmarks for the Labels layer with 2D data"""
 
-    param_names = ['n', 'dtype']
-    params = ([2**i for i in range(4, 13)], [np.uint8, np.int32])
+    params = [2**i for i in range(4, 13)]
 
-    def setup(self, n, dtype):
+    def setup(self, n):
         np.random.seed(0)
-        self.data = np.random.randint(20, size=(n, n), dtype=dtype)
+        self.data = np.random.randint(20, size=(n, n))
         self.layer = Labels(self.data)
-        self.layer._raw_to_displayed(self.data, (slice(0, n), slice(0, n)))
 
-    def time_create_layer(self, *_):
+    def time_create_layer(self, n):
         """Time to create layer."""
         Labels(self.data)
 
-    def time_set_view_slice(self, *_):
+    def time_set_view_slice(self, n):
         """Time to set view slice."""
         self.layer._set_view_slice()
 
-    def time_refresh(self, *_):
+    def time_refresh(self, n):
         """Time to refresh view."""
         self.layer.refresh()
 
-    def time_update_thumbnail(self, *_):
+    def time_update_thumbnail(self, n):
         """Time to update thumbnail."""
         self.layer._update_thumbnail()
 
-    def time_get_value(self, *_):
+    def time_get_value(self, n):
         """Time to get current value."""
         self.layer.get_value((0,) * 2)
 
-    def time_raw_to_displayed(self, *_):
+    def time_raw_to_displayed(self, n):
         """Time to convert raw to displayed."""
         self.layer._slice.image.raw[0, :] += 1  # simulate changes
         self.layer._raw_to_displayed(self.layer._slice.image.raw)
 
-    def time_paint_circle(self, *_):
+    def time_paint_circle(self, n):
         """Time to paint circle."""
         self.layer.paint((0,) * 2, self.layer.selected_label)
 
-    def time_fill(self, *_):
+    def time_fill(self, n):
         """Time to fill."""
         self.layer.fill(
             (0,) * 2,
@@ -59,11 +56,11 @@ class Labels2DSuite:
             self.layer.selected_label,
         )
 
-    def mem_layer(self, *_):
+    def mem_layer(self, n):
         """Memory used by layer."""
-        return copy(self.layer)
+        return self.layer
 
-    def mem_data(self, *_):
+    def mem_data(self, n):
         """Memory used by raw data."""
         return self.data
 
@@ -104,78 +101,60 @@ class LabelsDrawing2DSuite:
 
 
 class Labels2DColorDirectSuite(Labels2DSuite):
-    def setup(self, n, dtype):
-        if "PR" in os.environ and n > 32:
-            raise NotImplementedError("Skip on PR (speedup)")
+    def setup(self, n):
         np.random.seed(0)
-        info = np.iinfo(dtype)
-        self.data = np.random.randint(
-            low=max(-10000, info.min),
-            high=min(10000, info.max),
-            size=(n, n),
-            dtype=dtype,
-        )
-        random_label_ids = np.random.randint(
-            low=max(-10000, info.min), high=min(10000, info.max), size=20
-        )
+        self.data = np.random.randint(low=-10000, high=10000, size=(n, n))
+        random_label_ids = np.random.randint(low=-10000, high=10000, size=20)
         self.layer = Labels(
             self.data,
             color={i + 1: np.random.random(4) for i in random_label_ids},
         )
-        self.layer._raw_to_displayed(
-            self.layer._slice.image.raw, (slice(0, n), slice(0, n))
-        )
+        self.layer._raw_to_displayed(self.layer._slice.image.raw)
 
 
 class Labels3DSuite:
     """Benchmarks for the Labels layer with 3D data."""
 
-    param_names = ['n', 'dtype']
-    params = ([2**i for i in range(4, 11)], [np.uint8, np.uint32])
+    params = [2**i for i in range(4, 11)]
 
-    def setup(self, n, dtype):
+    def setup(self, n):
         if "CI" in os.environ and n > 512:
             raise NotImplementedError("Skip on CI (not enough memory)")
 
         np.random.seed(0)
-        self.data = np.random.randint(20, size=(n, n, n), dtype=dtype)
+        self.data = np.random.randint(20, size=(n, n, n))
         self.layer = Labels(self.data)
-        self.layer._slice_dims([0, 0, 0])
-        self.layer._raw_to_displayed(
-            self.layer._slice.image.raw,
-            (slice(0, n), slice(0, n), slice(0, n)),
-        )
 
-    def time_create_layer(self, *_):
+    def time_create_layer(self, n):
         """Time to create layer."""
         Labels(self.data)
 
-    def time_set_view_slice(self, *_):
+    def time_set_view_slice(self, n):
         """Time to set view slice."""
         self.layer._set_view_slice()
 
-    def time_refresh(self, *_):
+    def time_refresh(self, n):
         """Time to refresh view."""
         self.layer.refresh()
 
-    def time_update_thumbnail(self, *_):
+    def time_update_thumbnail(self, n):
         """Time to update thumbnail."""
         self.layer._update_thumbnail()
 
-    def time_get_value(self, *_):
+    def time_get_value(self, n):
         """Time to get current value."""
         self.layer.get_value((0,) * 3)
 
-    def time_raw_to_displayed(self, *_):
+    def time_raw_to_displayed(self, n):
         """Time to convert raw to displayed."""
         self.layer._slice.image.raw[0, 0, :] += 1  # simulate changes
         self.layer._raw_to_displayed(self.layer._slice.image.raw)
 
-    def time_paint_circle(self, *_):
+    def time_paint_circle(self, n):
         """Time to paint circle."""
         self.layer.paint((0,) * 3, self.layer.selected_label)
 
-    def time_fill(self, *_):
+    def time_fill(self, n):
         """Time to fill."""
         self.layer.fill(
             (0,) * 3,
@@ -183,10 +162,10 @@ class Labels3DSuite:
             self.layer.selected_label,
         )
 
-    def mem_layer(self, *_):
+    def mem_layer(self, n):
         """Memory used by layer."""
-        return copy(self.layer)
+        return self.layer
 
-    def mem_data(self, *_):
+    def mem_data(self, n):
         """Memory used by raw data."""
         return self.data

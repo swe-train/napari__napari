@@ -1,7 +1,5 @@
 from vispy.scene.visuals import Volume as BaseVolume
 
-from napari._vispy.visuals.util import TextureMixin
-
 FUNCTION_DEFINITIONS = """
 // the tolerance for testing equality of floats with floatEqual and floatNotEqual
 const float equality_tolerance = 1e-8;
@@ -202,7 +200,7 @@ rendering_methods['iso_categorical'] = ISO_CATEGORICAL_SNIPPETS
 rendering_methods['translucent_categorical'] = TRANSLUCENT_CATEGORICAL_SNIPPETS
 
 
-class Volume(TextureMixin, BaseVolume):
+class Volume(BaseVolume):
     # add the new rendering method to the snippets dict
     _shaders = shaders
     _rendering_methods = rendering_methods
