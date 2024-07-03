@@ -231,6 +231,7 @@ class FileMenu(NapariMenu):
                         handle_gui_reading(
                             e.paths,
                             self._win._qt_viewer,
+                            plugin_name=plg,
                             stack=False,
                         )
 

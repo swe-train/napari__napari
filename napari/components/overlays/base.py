@@ -1,5 +1,3 @@
-from typing import Tuple, Union
-
 from napari.components._viewer_constants import CanvasPosition
 from napari.layers.base._base_constants import Blending
 from napari.utils.events import EventedModel
@@ -25,7 +23,7 @@ class Overlay(EventedModel):
 
     visible: bool = False
     opacity: float = 1
-    order: int = 10**6
+    order: int = 1e6
     blending: Blending
 
     def __hash__(self):
@@ -51,9 +49,7 @@ class CanvasOverlay(Overlay):
         The rendering order of the overlay: lower numbers get rendered first.
     """
 
-    position: Union[
-        CanvasPosition, Tuple[int, int]
-    ] = CanvasPosition.BOTTOM_RIGHT
+    position: CanvasPosition = CanvasPosition.BOTTOM_RIGHT
     blending: Blending = Blending.TRANSLUCENT_NO_DEPTH
 
 

@@ -15,8 +15,6 @@ from dask.cache import Cache
 _DASK_CACHE = Cache(1)
 _DEFAULT_MEM_FRACTION = 0.25
 
-DaskIndexer = Callable[[], ContextManager[Optional[Tuple[dict, Cache]]]]
-
 
 def resize_dask_cache(
     nbytes: Optional[int] = None, mem_fraction: Optional[float] = None
@@ -84,7 +82,9 @@ def _is_dask_data(data) -> bool:
     )
 
 
-def configure_dask(data, cache=True) -> DaskIndexer:
+def configure_dask(
+    data, cache=True
+) -> Callable[[], ContextManager[Optional[Tuple[dict, Cache]]]]:
     """Spin up cache and return context manager that optimizes Dask indexing.
 
     This function determines whether data is a dask array or list of dask

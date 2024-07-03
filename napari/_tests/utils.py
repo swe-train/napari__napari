@@ -2,13 +2,11 @@ import os
 import sys
 from collections import abc
 from contextlib import suppress
-from threading import RLock
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict
 
 import numpy as np
 import pandas as pd
 import pytest
-from numpy.typing import DTypeLike
 
 from napari import Viewer
 from napari.layers import (
@@ -20,7 +18,6 @@ from napari.layers import (
     Tracks,
     Vectors,
 )
-from napari.layers._data_protocols import Index, LayerDataProtocol
 from napari.utils.color import ColorArray
 
 skip_on_win_ci = pytest.mark.skipif(
@@ -121,35 +118,6 @@ good_layer_data = [
 ]
 
 
-class LockableData:
-    """A wrapper for napari layer data that blocks read-access with a lock.
-
-    This is useful when testing async slicing with real napari layers because
-    it allows us to control when slicing tasks complete.
-    """
-
-    def __init__(self, data: LayerDataProtocol) -> None:
-        self.data = data
-        self.lock = RLock()
-
-    @property
-    def dtype(self) -> DTypeLike:
-        return self.data.dtype
-
-    @property
-    def shape(self) -> Tuple[int, ...]:
-        return self.data.shape
-
-    def __getitem__(
-        self, key: Union[Index, Tuple[Index, ...], LayerDataProtocol]
-    ) -> LayerDataProtocol:
-        with self.lock:
-            return self.data[key]
-
-    def __len__(self) -> int:
-        return len(self.data)
-
-
 def add_layer_by_type(viewer, layer_type, data, visible=True):
     """
     Convenience method that maps a LayerType to its add_layer method.
@@ -234,7 +202,7 @@ def check_view_transform_consistency(layer, viewer, transf_dict):
         return
 
     # Get an handle on visual layer:
-    vis_lyr = viewer.window._qt_viewer.canvas.layer_to_visual[layer]
+    vis_lyr = viewer.window._qt_viewer.layer_to_visual[layer]
     # Visual layer attributes should match expected from viewer dims:
     for transf_name, transf in transf_dict.items():
         disp_dims = list(viewer.dims.displayed)  # dimensions displayed in 2D
@@ -244,7 +212,9 @@ def check_view_transform_consistency(layer, viewer, transf_dict):
         np.testing.assert_almost_equal(vis_vals, transf[disp_dims])
 
 
-def check_layer_world_data_extent(layer, extent, scale, translate):
+def check_layer_world_data_extent(
+    layer, extent, scale, translate, pixels=False
+):
     """Test extents after applying transforms.
 
     Parameters
@@ -259,11 +229,12 @@ def check_layer_world_data_extent(layer, extent, scale, translate):
         Translation to be applied to layer.
     """
     np.testing.assert_almost_equal(layer.extent.data, extent)
-    np.testing.assert_almost_equal(layer.extent.world, extent)
+    world_extent = extent - 0.5 if pixels else extent
+    np.testing.assert_almost_equal(layer.extent.world, world_extent)
 
     # Apply scale transformation
     layer.scale = scale
-    scaled_world_extent = np.multiply(extent, scale)
+    scaled_world_extent = np.multiply(world_extent, scale)
     np.testing.assert_almost_equal(layer.extent.data, extent)
     np.testing.assert_almost_equal(layer.extent.world, scaled_world_extent)
 

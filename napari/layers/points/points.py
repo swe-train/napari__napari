@@ -2,17 +2,7 @@ import numbers
 import warnings
 from copy import copy, deepcopy
 from itertools import cycle
-from typing import (
-    Any,
-    Callable,
-    ClassVar,
-    Dict,
-    List,
-    Optional,
-    Sequence,
-    Tuple,
-    Union,
-)
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -34,9 +24,7 @@ from napari.layers.points._points_utils import (
     fix_data_points,
     points_to_squares,
 )
-from napari.layers.points._slice import _PointSliceRequest, _PointSliceResponse
 from napari.layers.utils._color_manager_constants import ColorMode
-from napari.layers.utils._slice_input import _SliceInput
 from napari.layers.utils.color_manager import ColorManager
 from napari.layers.utils.color_transformations import ColorType
 from napari.layers.utils.interactivity_utils import (
@@ -281,8 +269,8 @@ class Points(Layer):
 
     Notes
     -----
-    _view_data : array (M, D)
-        coordinates of points in the currently viewed slice.
+    _view_data : array (M, 2)
+        2D coordinates of points in the currently viewed slice.
     _view_size : array (M, )
         Size of the point markers in the currently viewed slice.
     _view_symbol : array (M, )
@@ -305,20 +293,20 @@ class Points(Layer):
 
     _modeclass = Mode
 
-    _drag_modes: ClassVar[Dict[Mode, Callable[["Points", Event], Any]]] = {
+    _drag_modes = {
         Mode.PAN_ZOOM: no_op,
         Mode.TRANSFORM: transform_with_box,
         Mode.ADD: add,
         Mode.SELECT: select,
     }
 
-    _move_modes: ClassVar[Dict[Mode, Callable[["Points", Event], Any]]] = {
+    _move_modes = {
         Mode.PAN_ZOOM: no_op,
         Mode.TRANSFORM: highlight_box_handles,
         Mode.ADD: no_op,
         Mode.SELECT: highlight,
     }
-    _cursor_modes: ClassVar[Dict[Mode, str]] = {
+    _cursor_modes = {
         Mode.PAN_ZOOM: 'standard',
         Mode.TRANSFORM: 'standard',
         Mode.ADD: 'crosshair',
@@ -535,17 +523,6 @@ class Points(Layer):
 
     @data.setter
     def data(self, data: Optional[np.ndarray]):
-        """Set the data array and emit a corresponding event."""
-        self._set_data(data)
-        self.events.data(
-            value=self.data,
-            action=ActionType.CHANGE.value,
-            data_indices=slice(None),
-            vertex_indices=((),),
-        )
-
-    def _set_data(self, data: Optional[np.ndarray]):
-        """Set the .data array attribute, without emitting an event."""
         data, _ = fix_data_points(data, self.ndim)
         cur_npoints = len(self._data)
         self._data = data
@@ -605,6 +582,7 @@ class Points(Layer):
                     (self._edge_width, edge_width), axis=0
                 )
                 self.symbol = np.concatenate((self._symbol, symbol), axis=0)
+                self.selected_data = set(np.arange(cur_npoints, len(data)))
 
         self._update_dims()
         self._reset_editable()
@@ -766,20 +744,7 @@ class Points(Layer):
             maxs = np.max(self.data, axis=0)
             mins = np.min(self.data, axis=0)
             extrema = np.vstack([mins, maxs])
-        return extrema.astype(float)
-
-    @property
-    def _extent_data_augmented(self):
-        # _extent_data is a property that returns a new/copied array, which
-        # is safe to modify below
-        extent = self._extent_data
-        if len(self.size) == 0:
-            return extent
-
-        max_point_size = np.max(self.size)
-        extent[0] -= max_point_size / 2
-        extent[1] += max_point_size / 2
-        return extent
+        return extrema
 
     @property
     def out_of_slice_display(self) -> bool:
@@ -863,7 +828,6 @@ class Points(Layer):
                     category=DeprecationWarning,
                     stacklevel=2,
                 )
-        self._clear_extent_augmented()
         self.refresh()
 
     @property
@@ -903,7 +867,6 @@ class Points(Layer):
         if self._update_properties and len(self.selected_data) > 0:
             idx = np.fromiter(self.selected_data, dtype=int)
             self.size[idx] = size
-            self._clear_extent_augmented()
             self.refresh()
             self.events.size()
         self.events.current_size()
@@ -1303,13 +1266,13 @@ class Points(Layer):
                 if self.data.size
                 else [self.current_face_color],
                 'face_color_cycle': self.face_color_cycle,
-                'face_colormap': self.face_colormap.dict(),
+                'face_colormap': self.face_colormap.name,
                 'face_contrast_limits': self.face_contrast_limits,
                 'edge_color': self.edge_color
                 if self.data.size
                 else [self.current_edge_color],
                 'edge_color_cycle': self.edge_color_cycle,
-                'edge_colormap': self.edge_colormap.dict(),
+                'edge_colormap': self.edge_colormap.name,
                 'edge_contrast_limits': self.edge_contrast_limits,
                 'properties': self.properties,
                 'property_choices': self.property_choices,
@@ -1380,7 +1343,6 @@ class Points(Layer):
 
             if all(p is not None for p in unique_properties.values()):
                 self.current_properties = unique_properties
-
         self._set_highlight()
 
     def interaction_box(self, index) -> Optional[np.ndarray]:
@@ -1491,9 +1453,7 @@ class Points(Layer):
             The vispy text anchor for the y axis
         """
         return self.text.compute_text_coords(
-            self._view_data,
-            self._slice_input.ndisplay,
-            self._slice_input.order,
+            self._view_data, self._slice_input.ndisplay
         )
 
     @property
@@ -1575,13 +1535,56 @@ class Points(Layer):
         if not self.editable:
             self.mode = Mode.PAN_ZOOM
 
-    def _update_draw(
-        self, scale_factor, corner_pixels_displayed, shape_threshold
-    ):
-        super()._update_draw(
-            scale_factor, corner_pixels_displayed, shape_threshold
-        )
-        self._set_highlight(force=True)
+    def _slice_data(
+        self, dims_indices
+    ) -> Tuple[List[int], Union[float, np.ndarray]]:
+        """Determines the slice of points given the indices.
+
+        Parameters
+        ----------
+        dims_indices : sequence of int or slice
+            Indices to slice with.
+
+        Returns
+        -------
+        slice_indices : list
+            Indices of points in the currently viewed slice.
+        scale : float, (N, ) array
+            If in `out_of_slice_display` mode then the scale factor of points, where
+            values of 1 corresponds to points located in the slice, and values
+            less than 1 correspond to points located in neighboring slices.
+        """
+        # Get a list of the data for the points in this slice
+        not_disp = list(self._slice_input.not_displayed)
+        # We want a numpy array so we can use fancy indexing with the non-displayed
+        # indices, but as dims_indices can (and often/always does) contain slice
+        # objects, the array has dtype=object which is then very slow for the
+        # arithmetic below. As Points._round_index is always False, we can safely
+        # convert to float to get a major performance improvement.
+        not_disp_indices = np.array(dims_indices)[not_disp].astype(float)
+        if len(self.data) > 0:
+            if self.out_of_slice_display is True and self.ndim > 2:
+                distances = abs(self.data[:, not_disp] - not_disp_indices)
+                view_dim = distances.shape[1]
+                sizes = (
+                    np.repeat(self.size, view_dim).reshape(distances.shape) / 2
+                )
+                matches = np.all(distances <= sizes, axis=1)
+                size_match = sizes[matches]
+                size_match[size_match == 0] = 1
+                scale_per_dim = (size_match - distances[matches]) / size_match
+                scale_per_dim[size_match == 0] = 1
+                scale = np.prod(scale_per_dim, axis=1)
+                slice_indices = np.where(matches)[0].astype(int)
+                return slice_indices, scale
+
+            data = self.data[:, not_disp]
+            distances = np.abs(data - not_disp_indices)
+            matches = np.all(distances <= 0.5, axis=1)
+            slice_indices = np.where(matches)[0].astype(int)
+            return slice_indices, 1
+
+        return [], np.empty(0)
 
     def _get_value(self, position) -> Optional[int]:
         """Index of the point at a given 2D position in data coordinates.
@@ -1613,10 +1616,10 @@ class Points(Layer):
             # Without this implementation, point hover and selection (and anything depending
             # on self.get_value()) won't be aware of the real extent of points, causing
             # unexpected behaviour. See #3734 for details.
-            sizes = np.expand_dims(self._view_size, axis=1) / scale_ratio / 2
             distances = abs(view_data - displayed_position)
             in_slice_matches = np.all(
-                distances <= sizes,
+                distances
+                <= np.expand_dims(self._view_size, axis=1) / scale_ratio / 2,
                 axis=1,
             )
             indices = np.where(in_slice_matches)[0]
@@ -1673,10 +1676,10 @@ class Points(Layer):
         # so we need to calculate the ratio to correctly map to screen coordinates
         scale_ratio = self.scale[self._slice_input.displayed] / self.scale[-1]
         # find the points the click intersects
-        sizes = np.expand_dims(self._view_size, axis=1) / scale_ratio / 2
         distances = abs(rotated_points - rotated_click_point)
         in_slice_matches = np.all(
-            distances <= sizes,
+            distances
+            <= np.expand_dims(self._view_size, axis=1) / scale_ratio / 2,
             axis=1,
         )
         indices = np.where(in_slice_matches)[0]
@@ -1689,6 +1692,22 @@ class Points(Layer):
         else:
             selection = None
         return selection
+
+    def _display_bounding_box_augmented(self, dims_displayed: np.ndarray):
+        """An augmented, axis-aligned (ndisplay, 2) bounding box.
+
+        This bounding box for includes the full size of displayed points
+        and enables calculation of intersections in `Layer._get_value_3d()`.
+        """
+        if len(self._view_size) == 0:
+            return None
+        max_point_size = np.max(self._view_size)
+        bounding_box = np.copy(
+            self._display_bounding_box(dims_displayed)
+        ).astype(float)
+        bounding_box[:, 0] -= max_point_size / 2
+        bounding_box[:, 1] += max_point_size / 2
+        return bounding_box
 
     def get_ray_intersections(
         self,
@@ -1753,44 +1772,8 @@ class Points(Layer):
 
     def _set_view_slice(self):
         """Sets the view given the indices to slice with."""
-
-        # The new slicing code makes a request from the existing state and
-        # executes the request on the calling thread directly.
-        # For async slicing, the calling thread will not be the main thread.
-        request = self._make_slice_request_internal(
-            self._slice_input, self._slice_indices
-        )
-        response = request()
-        self._update_slice_response(response)
-
-    def _make_slice_request(self, dims) -> _PointSliceRequest:
-        """Make a Points slice request based on the given dims and these data."""
-        slice_input = self._make_slice_input(
-            dims.point, dims.ndisplay, dims.order
-        )
-        # See Image._make_slice_request to understand why we evaluate this here
-        # instead of using `self._slice_indices`.
-        slice_indices = slice_input.data_indices(
-            self._data_to_world.inverse, round_index=False
-        )
-        return self._make_slice_request_internal(slice_input, slice_indices)
-
-    def _make_slice_request_internal(
-        self, slice_input: _SliceInput, dims_indices
-    ):
-        return _PointSliceRequest(
-            dims=slice_input,
-            data=self.data,
-            dims_indices=dims_indices,
-            out_of_slice_display=self.out_of_slice_display,
-            size=self.size,
-        )
-
-    def _update_slice_response(self, response: _PointSliceResponse):
-        """Handle a slicing response."""
-        self._slice_input = response.dims
-        indices = response.indices
-        scale = response.scale
+        # get the indices of points in view
+        indices, scale = self._slice_data(self._slice_indices)
 
         # Update the _view_size_scale in accordance to the self._indices_view setter.
         # If out_of_slice_display is False, scale is a number and not an array.
@@ -1934,15 +1917,13 @@ class Points(Layer):
         coords : array
             Point or points to add to the layer data.
         """
-        cur_points = len(self.data)
-        self._set_data(np.append(self.data, np.atleast_2d(coords), axis=0))
+        self.data = np.append(self.data, np.atleast_2d(coords), axis=0)
         self.events.data(
             value=self.data,
             action=ActionType.ADD.value,
             data_indices=(-1,),
             vertex_indices=((),),
         )
-        self.selected_data = set(np.arange(cur_points, len(self.data)))
 
     def remove_selected(self):
         """Removes selected points if any."""
@@ -1970,7 +1951,7 @@ class Points(Layer):
                     self._value -= offset
                     self._value_stored -= offset
 
-            self._set_data(np.delete(self.data, index, axis=0))
+            self.data = np.delete(self.data, index, axis=0)
             self.events.data(
                 value=self.data,
                 action=ActionType.REMOVE.value,
@@ -2157,6 +2138,8 @@ class Points(Layer):
 
         # Scale each radius by the geometric mean scale of the Points layer to
         # keep the balls isotropic when visualized in world coordinates.
+        # Then scale each radius by the scale of the output image mask
+        # using the geometric mean if isotropic output is desired.
         # The geometric means are used instead of the arithmetic mean
         # to maintain the volume scaling factor of the transforms.
         point_data_to_world_scale = gmean(np.abs(self._data_to_world.scale))

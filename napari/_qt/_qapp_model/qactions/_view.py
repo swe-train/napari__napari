@@ -1,9 +1,3 @@
-"""Actions related to the 'View' menu that require Qt.
-
-'View' actions that do not require Qt should go in
-`napari/_app_model/actions/_view_actions.py`.
-"""
-
 import sys
 from typing import List
 
@@ -17,6 +11,8 @@ from app_model.types import (
 
 from napari._app_model.constants import CommandId, MenuGroup, MenuId
 from napari._qt.qt_main_window import Window
+from napari._qt.qt_viewer import QtViewer
+from napari.settings import get_settings
 from napari.utils.translations import trans
 
 
@@ -76,6 +72,22 @@ Q_VIEW_ACTIONS: List[Action] = [
         ],
         callback=Window._toggle_play,
         keybindings=[{'primary': KeyMod.CtrlCmd | KeyMod.Alt | KeyCode.KeyP}],
+    ),
+    Action(
+        id=CommandId.TOGGLE_OCTREE_CHUNK_OUTLINES,
+        title=CommandId.TOGGLE_OCTREE_CHUNK_OUTLINES.title,
+        menus=[
+            {
+                'id': MenuId.MENUBAR_VIEW,
+                'group': MenuGroup.RENDER,
+                'order': 1,
+                'when': get_settings().experimental.octree,
+            }
+        ],
+        callback=QtViewer._toggle_chunk_outlines,
+        enablement=get_settings().experimental.octree,
+        # this used to have a keybinding of Ctrl+Alt+O, but that conflicts with
+        # Open files as stack
     ),
     Action(
         id=CommandId.TOGGLE_ACTIVITY_DOCK,

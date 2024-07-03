@@ -1,5 +1,3 @@
-from typing import ClassVar, Dict
-
 from vispy.scene.visuals import Markers as BaseMarkers
 
 clamp_shader = """
@@ -15,7 +13,7 @@ new_vshader = old_vshader[:-2] + clamp_shader + '\n}'  # very ugly...
 
 
 class Markers(BaseMarkers):
-    _shaders: ClassVar[Dict[str, str]] = {
+    _shaders = {
         'vertex': new_vshader,
         'fragment': BaseMarkers._shaders['fragment'],
     }

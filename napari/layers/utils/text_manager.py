@@ -1,6 +1,6 @@
 import warnings
 from copy import deepcopy
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -75,7 +75,7 @@ class TextManager(EventedModel):
         The location of the text origin relative to the bounding box.
         Should be 'center', 'upper_left', 'upper_right', 'lower_left', or 'lower_right'.
     translation : np.ndarray
-        Offset from the anchor point in data coordinates.
+        Offset from the anchor point.
     rotation : float
         Angle of the text elements around the anchor point. Default value is 0.
     """
@@ -225,10 +225,7 @@ class TextManager(EventedModel):
         self.color._append(color)
 
     def compute_text_coords(
-        self,
-        view_data: np.ndarray,
-        ndisplay: int,
-        order: Optional[Tuple[int, ...]] = None,
+        self, view_data: np.ndarray, ndisplay: int
     ) -> Tuple[np.ndarray, str, str]:
         """Calculate the coordinates for each text element in view
 
@@ -238,9 +235,6 @@ class TextManager(EventedModel):
             The in view data from the layer
         ndisplay : int
             The number of dimensions being displayed in the viewer
-        order : tuple of ints, optional
-            The display order of the dimensions in the layer.
-            If None, implies ``range(ndisplay)``.
 
         Returns
         -------
@@ -254,20 +248,7 @@ class TextManager(EventedModel):
         anchor_coords, anchor_x, anchor_y = get_text_anchors(
             view_data, ndisplay, self.anchor
         )
-        # The translation should either be a scalar or be as long as
-        # the dimensionality of the associated layer.
-        # We do not have direct knowledge of that dimensionality, but
-        # can infer enough information to get the translation coordinates
-        # that need to offset the anchor coordinates.
-        ndim_coords = min(ndisplay, anchor_coords.shape[1])
-        translation = self.translation
-        if translation.size > 1:
-            if order is None:
-                translation = self.translation[-ndim_coords:]
-            else:
-                order_displayed = list(order[-ndim_coords:])
-                translation = self.translation[order_displayed]
-        text_coords = anchor_coords + translation
+        text_coords = anchor_coords + self.translation
         return text_coords, anchor_x, anchor_y
 
     def view_text(self, indices_view: np.ndarray) -> np.ndarray:
@@ -364,7 +345,7 @@ class TextManager(EventedModel):
         # values if needed.
         self.apply(features)
 
-    @validator('blending', pre=True, always=True, allow_reuse=True)
+    @validator('blending', pre=True, always=True)
     def _check_blending_mode(cls, blending):
         blending_mode = Blending(blending)
 

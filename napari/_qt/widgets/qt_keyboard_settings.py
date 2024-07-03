@@ -1,12 +1,9 @@
 import contextlib
+import re
 from collections import OrderedDict
-from typing import Optional
 
-from app_model.backends.qt import (
-    qkey2modelkey,
-    qkeysequence2modelkeybinding,
-)
 from qtpy.QtCore import QEvent, QPoint, Qt, Signal
+from qtpy.QtGui import QKeySequence
 from qtpy.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -22,6 +19,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from vispy.util import keys
 
 from napari._qt.widgets.qt_message_popup import WarnPopup
 from napari.layers import (
@@ -38,6 +36,12 @@ from napari.utils.action_manager import action_manager
 from napari.utils.interactions import Shortcut
 from napari.utils.translations import trans
 
+# Dict used to format strings returned from converted key press events.
+# For example, the ShortcutTranslator returns 'Ctrl' instead of 'Control'.
+# In order to be consistent with the code base, the values in KEY_SUBS will
+# be subsituted.
+KEY_SUBS = {'Ctrl': 'Control'}
+
 
 class ShortcutEditor(QWidget):
     """Widget to edit keybindings for napari."""
@@ -49,7 +53,7 @@ class ShortcutEditor(QWidget):
         self,
         parent: QWidget = None,
         description: str = "",
-        value: Optional[dict] = None,
+        value: dict = None,
     ) -> None:
         super().__init__(parent=parent)
 
@@ -246,9 +250,7 @@ class ShortcutEditor(QWidget):
 
                 # Set the shortcuts in table.
                 item_shortcut = QTableWidgetItem(
-                    Shortcut(next(iter(shortcuts))).platform
-                    if shortcuts
-                    else ""
+                    Shortcut(list(shortcuts)[0]).platform if shortcuts else ""
                 )
                 self._table.setItem(row, self._shortcut_col, item_shortcut)
 
@@ -292,7 +294,7 @@ class ShortcutEditor(QWidget):
         shortcuts = action_manager._shortcuts.get(action_name, [])
         with lock_keybind_update(self):
             self._table.item(row, self._shortcut_col).setText(
-                Shortcut(next(iter(shortcuts))).platform if shortcuts else ""
+                Shortcut(list(shortcuts)[0]).platform if shortcuts else ""
             )
             self._table.item(row, self._shortcut_col2).setText(
                 Shortcut(list(shortcuts)[1]).platform
@@ -323,7 +325,7 @@ class ShortcutEditor(QWidget):
                     new_shortcut=new_shortcut,
                     action_description=action.description,
                 )
-                self._show_warning(row, message)
+                self._show_warning(new_shortcut, action, row, message)
 
                 self._restore_shortcuts(row)
 
@@ -354,7 +356,7 @@ class ShortcutEditor(QWidget):
             "<b>{new_shortcut}</b> is not a valid keybinding.",
             new_shortcut=new_shortcut,
         )
-        self._show_warning(row, message)
+        self._show_warning(new_shortcut, current_action, row, message)
 
         self._cleanup_warning_icons([row])
         self._restore_shortcuts(row)
@@ -391,7 +393,7 @@ class ShortcutEditor(QWidget):
 
             # get the current item from shortcuts column
             current_item = self._table.currentItem()
-            new_shortcut = Shortcut.parse_platform(current_item.text())
+            new_shortcut = current_item.text()
             if new_shortcut:
                 new_shortcut = new_shortcut[0].upper() + new_shortcut[1:]
 
@@ -473,11 +475,15 @@ class ShortcutEditor(QWidget):
         for row in rows:
             self._table.setCellWidget(row, self._icon_col, QLabel(""))
 
-    def _show_warning(self, row: int, message: str) -> None:
+    def _show_warning(self, new_shortcut='', action=None, row=0, message=''):
         """Creates and displays warning message when shortcut is already assigned.
 
         Parameters
         ----------
+        new_shortcut : str
+            The new shortcut attempting to be set.
+        action : Action
+            Action that is already assigned with the shortcut.
         row : int
             Row in table where the shortcut is attempting to be set.
         message : str
@@ -579,14 +585,16 @@ class EditorWidget(QLineEdit):
             self.setText('')
             return
 
-        if event_key in (
-            Qt.Key.Key_Control,
-            Qt.Key.Key_Shift,
-            Qt.Key.Key_Alt,
-            Qt.Key.Key_Meta,
-            Qt.Key.Key_Delete,
-        ):
-            self.setText(Shortcut(qkey2modelkey(event_key)).platform)
+        key_map = {
+            Qt.Key.Key_Control: keys.CONTROL.name,
+            Qt.Key.Key_Shift: keys.SHIFT.name,
+            Qt.Key.Key_Alt: keys.ALT.name,
+            Qt.Key.Key_Meta: keys.META.name,
+            Qt.Key.Key_Delete: keys.DELETE.name,
+        }
+
+        if event_key in key_map:
+            self.setText(key_map[event_key])
             return
 
         if event_key in {
@@ -601,8 +609,21 @@ class EditorWidget(QLineEdit):
         # Translate key value to key string.
         translator = ShortcutTranslator()
         event_keyseq = translator.keyevent_to_keyseq(event)
-        kb = qkeysequence2modelkeybinding(event_keyseq)
-        self.setText(Shortcut(kb).platform)
+        event_keystr = event_keyseq.toString(QKeySequence.PortableText)
+
+        # Split the shortcut if it contains a symbol.
+        parsed = re.split('[-(?=.+)]', event_keystr)
+
+        keys_li = []
+        # Format how the shortcut is written (ex. 'Ctrl+B' is changed to 'Control-B')
+        for val in parsed:
+            if val in KEY_SUBS:
+                keys_li.append(KEY_SUBS[val])
+            else:
+                keys_li.append(val)
+
+        keys_li = '-'.join(keys_li)
+        self.setText(keys_li)
 
 
 class ShortcutTranslator(QKeySequenceEdit):

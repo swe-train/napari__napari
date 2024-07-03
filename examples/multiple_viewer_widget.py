@@ -13,7 +13,6 @@ current dims point (`viewer.dims.point`).
 """
 
 from copy import deepcopy
-from typing import Optional
 
 import numpy as np
 from packaging.version import parse as parse_version
@@ -149,8 +148,8 @@ class QtViewerWrap(QtViewer):
         self,
         filenames: list,
         stack: bool,
-        plugin: Optional[str] = None,
-        layer_type: Optional[str] = None,
+        plugin: str = None,
+        layer_type: str = None,
         **kwargs,
     ):
         """for drag and drop open files"""

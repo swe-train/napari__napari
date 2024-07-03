@@ -28,9 +28,7 @@ class QtFontSizePreview(QFrame):
         Preview text to display. Default is None.
     """
 
-    def __init__(
-        self, parent: QWidget = None, text: typing.Optional[str] = None
-    ) -> None:
+    def __init__(self, parent: QWidget = None, text: str = None) -> None:
         super().__init__(parent)
 
         self._text = text or ""
@@ -102,9 +100,9 @@ class QtSizeSliderPreviewWidget(QWidget):
     def __init__(
         self,
         parent: QWidget = None,
-        description: typing.Optional[str] = None,
-        preview_text: typing.Optional[str] = None,
-        value: typing.Optional[int] = None,
+        description: str = None,
+        preview_text: str = None,
+        value: int = None,
         min_value: int = 1,
         max_value: int = 50,
         unit: str = "px",
@@ -207,7 +205,7 @@ class QtSizeSliderPreviewWidget(QWidget):
         self._value = value
         self._refresh(self._value)
 
-    def _refresh(self, value: typing.Optional[int] = None):
+    def _refresh(self, value: int = None):
         """Refresh the value on all subwidgets."""
         value = value or self._value
         self.blockSignals(True)

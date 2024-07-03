@@ -116,8 +116,6 @@ def orient_plane_normal_around_cursor(layer: Image, plane_normal: tuple):
     from napari.layers.image._image_constants import VolumeDepiction
 
     viewer = napari.viewer.current_viewer()
-    if viewer is None:
-        return
 
     # early exit
     if viewer.dims.ndisplay != 3 or layer.depiction != VolumeDepiction.PLANE:
@@ -125,11 +123,11 @@ def orient_plane_normal_around_cursor(layer: Image, plane_normal: tuple):
 
     # find cursor-plane intersection in data coordinates
     cursor_position = layer._world_to_displayed_data(
-        position=np.asarray(viewer.cursor.position),
+        position=viewer.cursor.position,
         dims_displayed=layer._slice_input.displayed,
     )
     view_direction = layer._world_to_displayed_data_ray(
-        np.asarray(viewer.camera.view_direction), dims_displayed=[-3, -2, -1]
+        viewer.camera.view_direction, dims_displayed=[-3, -2, -1]
     )
     intersection = layer.plane.intersect_with_line(
         line_position=cursor_position, line_direction=view_direction
@@ -144,7 +142,7 @@ def orient_plane_normal_around_cursor(layer: Image, plane_normal: tuple):
 
     # update plane normal
     layer.plane.normal = layer._world_to_displayed_data_ray(
-        np.asarray(plane_normal), dims_displayed=layer._slice_input.displayed
+        plane_normal, dims_displayed=layer._slice_input.displayed
     )
 
 

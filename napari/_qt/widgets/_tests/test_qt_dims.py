@@ -173,7 +173,7 @@ def test_singleton_dims(qtbot):
     """
     ndim = 4
     dims = Dims(ndim=ndim)
-    dims.set_range(0, (0, 0, 1))
+    dims.set_range(0, (0, 1, 1))
     view = QtDims(dims)
     qtbot.addWidget(view)
 
@@ -274,16 +274,7 @@ def test_slider_press_updates_last_used(qtbot):
 
     for i, widg in enumerate(view.slider_widgets):
         widg.slider.sliderPressed.emit()
-        if i in [0, 1, 2]:
-            # only the first three dims should have visible sliders
-            assert widg.isVisibleTo(view)
-            assert view.dims.last_used == i
-        else:
-            # sliders should not be visible for the follwing dims and the
-            # last_used should fallback to the first available dim with a
-            # visible slider (dim 0)
-            assert not widg.isVisibleTo(view)
-            assert view.dims.last_used == 0
+        assert view.dims.last_used == i
 
 
 @pytest.mark.skipif(

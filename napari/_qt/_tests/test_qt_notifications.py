@@ -267,6 +267,7 @@ def test_notification_error(count_show, monkeypatch):
 
 
 @skip_on_win_ci
+@pytest.mark.sync_only
 def test_notifications_error_with_threading(
     make_napari_viewer, clean_current, monkeypatch
 ):

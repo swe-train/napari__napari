@@ -18,7 +18,6 @@ from napari.layers import Points
 from napari.layers.base._base_constants import ActionType
 from napari.layers.points._points_constants import Mode
 from napari.layers.points._points_utils import points_to_squares
-from napari.layers.utils._slice_input import _SliceInput
 from napari.layers.utils._text_constants import Anchor
 from napari.layers.utils.color_encoding import ConstantColorEncoding
 from napari.layers.utils.color_manager import ColorProperties
@@ -370,23 +369,10 @@ def test_adding_points():
     layer.add(coords)
     assert len(layer.data) == 13
     assert np.all(layer.data[11:, :] == coords)
-    assert layer.selected_data == {11, 12}
 
     # test that the last added points can be deleted
     layer.remove_selected()
     np.testing.assert_equal(layer.data, np.vstack((data, coord)))
-
-
-def test_points_selection_with_setter():
-    shape = (10, 2)
-    np.random.seed(0)
-    data = 20 * np.random.random(shape)
-    layer = Points(data)
-
-    coords = [[10, 10], [15, 15]]
-    layer.data = np.append(layer.data, np.atleast_2d(coords), axis=0)
-    assert len(layer.data) == 12
-    assert layer.selected_data == set()
 
 
 def test_adding_points_to_empty():
@@ -400,7 +386,6 @@ def test_adding_points_to_empty():
     layer.add(coord)
     assert len(layer.data) == 1
     assert np.all(layer.data[0] == coord)
-    assert layer.selected_data == {0}
 
 
 def test_removing_selected_points():
@@ -992,7 +977,7 @@ def test_edge_width():
 
 @pytest.mark.parametrize(
     "edge_width",
-    [1, float(1), np.array([1, 2, 3, 4, 5]), [1, 2, 3, 4, 5]],
+    [int(1), float(1), np.array([1, 2, 3, 4, 5]), [1, 2, 3, 4, 5]],
 )
 def test_edge_width_types(edge_width):
     """Test edge_width dtypes with valid values"""
@@ -1653,9 +1638,6 @@ def test_message_3d():
     np.random.seed(0)
     data = 20 * np.random.random(shape)
     layer = Points(data)
-    layer._slice_input = _SliceInput(
-        ndisplay=3, point=(0, 0, 0), order=(0, 1, 2)
-    )
     msg = layer.get_status(
         (0, 0, 0), view_direction=[1, 0, 0], dims_displayed=[0, 1, 2]
     )
@@ -1809,7 +1791,7 @@ def test_world_data_extent():
     max_val = (7, 30, 15)
     layer = Points(data)
     extent = np.array((min_val, max_val))
-    check_layer_world_data_extent(layer, extent, (3, 1, 1), (10, 20, 5))
+    check_layer_world_data_extent(layer, extent, (3, 1, 1), (10, 20, 5), False)
 
 
 def test_scale_init():
@@ -2432,36 +2414,6 @@ def test_set_drag_start():
     np.testing.assert_array_equal(layer._drag_start, position)
 
 
-@pytest.mark.parametrize(
-    "dims_indices,target_indices",
-    [
-        ((8, slice(None), slice(None)), [2]),
-        ((10, slice(None), slice(None)), [0, 1, 3, 4]),
-        ((10 + 2 * 1e-12, slice(None), slice(None)), [0, 1, 3, 4]),
-        ((10.1, slice(None), slice(None)), [0, 1, 3, 4]),
-    ],
-)
-def test_point_slice_request_response(dims_indices, target_indices):
-    """Test points slicing with request and response."""
-    data = [
-        (10, 2, 4),
-        (10 + 2 * 1e-7, 4, 6),
-        (8, 1, 7),
-        (10.1, 7, 2),
-        (10 - 2 * 1e-7, 1, 6),
-    ]
-
-    layer = Points(data)
-
-    request = layer._make_slice_request_internal(
-        layer._slice_input, dims_indices
-    )
-    response = request()
-
-    assert len(response.indices) == len(target_indices)
-    assert all(a == b for a, b in zip(response.indices, target_indices))
-
-
 def test_editable_and_visible_are_independent():
     """See https://github.com/napari/napari/issues/1346"""
     data = np.empty((0, 2))
@@ -2486,24 +2438,3 @@ def test_point_selection_remains_evented_after_update():
     assert isinstance(layer.selected_data, Selection)
     layer.selected_data = {0, 1}
     assert isinstance(layer.selected_data, Selection)
-
-
-def test_points_data_setter_emits_event():
-    data = np.random.random((5, 2))
-    emitted_events = Mock()
-    layer = Points(data)
-    layer.events.data.connect(emitted_events)
-    layer.data = np.random.random((5, 2))
-    emitted_events.assert_called_once()
-
-
-def test_points_add_delete_only_emit_one_event():
-    data = np.random.random((5, 2))
-    emitted_events = Mock()
-    layer = Points(data)
-    layer.events.data.connect(emitted_events)
-    layer.add(np.random.random(2))
-    assert emitted_events.call_count == 1
-    layer.selected_data = {3}
-    layer.remove_selected()
-    assert emitted_events.call_count == 2

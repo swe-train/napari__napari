@@ -78,7 +78,7 @@ QMainWindow::separator:vertical {
 
 #QtCustomTitleBar > QLabel {
   color: {{ primary }};
-  font-size: {{ decrease(font_size, 1) }};
+  font-size: 11pt;
 }
 
 #QTitleBarCloseButton{
@@ -115,7 +115,6 @@ QtConsole > QTextEdit {
   color: {{ text }};
   selection-background-color: {{ highlight }};
   margin: 10px;
-  font-family: Menlo, Consolas, "Ubuntu Mono", "Roboto Mono", "DejaVu Sans Mono", monospace;
 }
 .inverted {
   background-color: {{ background }};
@@ -183,7 +182,7 @@ QtLayerWidget > QLineEdit {
   border: none;
   border-radius: 2px;
   padding: 2px;
-  font-size: {{ increase(font_size, 2) }};
+  font-size: 14px;
   qproperty-alignment: right;
 }
 
@@ -302,13 +301,13 @@ QtColorBox {
 
 /* ----------------- QtLayerControls -------------------- */
 
-QtLayerControls > QComboBox, QtLayerControls > QLabel, QtLayerControls, QtPlaneControls > QLabeledSlider > QAbstractSpinBox {
-  font-size: {{ decrease(font_size, 1) }};
+QtLayerControls > QLabel, QtLayerControls, QtPlaneControls > QLabeledSlider > QAbstractSpinBox {
+  font-size: 11pt;
   color: {{ text }};
 }
 
 QLabeledRangeSlider > QAbstractSpinBox {
-  font-size: {{ font_size }};
+  font-size: 12pt;
   color: {{ secondary }};
 }
 
@@ -329,12 +328,12 @@ QWidget[emphasized="true"] QLabel:disabled {
 }
 
 AutoScaleButtons QPushButton {
-  font-size: {{ decrease(font_size, 3) }};
+  font-size: 9pt;
   padding: 4;
 }
 
 PlaneNormalButtons QPushButton {
-    font-size: {{ decrease(font_size, 3) }};
+    font-size: 9pt;
     padding: 4;
 }
 /* ------------- DimsSliders --------- */
@@ -372,7 +371,7 @@ QtDimSliderWidget > QLineEdit {
 
 #QtPopupFrame > QLabel {
   color: {{ darken(text, 35) }};
-  font-size: {{ font_size }};
+  font-size: 12px;
 }
 
 #playDirectionCheckBox::indicator {
@@ -428,7 +427,7 @@ QtDimSliderWidget > QLineEdit {
 }
 
 #slice_label {
-  font-size: {{ decrease(font_size, 1) }};
+  font-size: 11pt;
   color: {{ secondary }};
   background: transparent;
 }
@@ -525,7 +524,7 @@ NapariQtNotification #close_button {
 
 NapariQtNotification #source_label {
   color: {{ primary }};
-  font-size: {{ decrease(font_size, 1) }};
+  font-size: 11px;
 }
 
 NapariQtNotification #severity_icon {
@@ -533,7 +532,7 @@ NapariQtNotification #severity_icon {
   margin: 0 0 -3px 0;
   min-width: 20px;
   min-height: 18px;
-  font-size: {{ increase(font_size, 3) }};
+  font-size: 15px;
   color: {{ icon }};
 }
 
@@ -541,7 +540,7 @@ NapariQtNotification #severity_icon {
 
 #QtCustomTitleLabel {
   color: {{ primary }};
-  font-size: {{ decrease(font_size, 1) }};
+  font-size: 11pt;  
 }
 
 #QtActivityButton:hover {
@@ -549,50 +548,6 @@ NapariQtNotification #severity_icon {
 }
 
 /* ------------ Plugin Dialog ------------ */
-
-QCollapsible#install_info_button {
-  background-color: {{ darken(foreground, 20) }};
-  color: {{ darken(text, 15) }};
-}
-QWidget#info_widget {
-  background-color: {{ darken(foreground, 20) }};
-  margin: 0px;
-  padding: 0px;
-  font: 11px;
-}
-
-QLabel#author_text {
-  color: {{ darken(text, 35) }};
-}
-
-QPushButton#install_choice {
-  background-color: {{ current }};
-  color: {{ darken(text, 35) }};
-}
-
-QPushButton#plugin_name_web {
-  background-color: {{ darken(foreground, 20) }};
-}
-
-QPushButton#plugin_name_web:hover {
-  background-color: {{ foreground }}
-}
-
-QPushButton#plugin_name {
-  background-color: {{ darken(foreground, 20) }};
-}
-QPushButton#plugin_name:hover {
-  background-color: {{ darken(foreground, 20) }};
-}
-
-
-QWidget#install_choice_widget {
-  background-color: {{ darken(foreground, 20) }};
-  color: {{ darken(text, 35) }};
-  margin: 0px;
-  padding: 0px;
-  font: 11px;
-}
 
 QPluginList {
   background: {{ console }};
@@ -668,16 +623,16 @@ QPushButton#close_button:disabled {
 
 #small_text {
   color: {{ opacity(text, 150) }};
-  font-size: {{ decrease(font_size, 2) }};
+  font-size: 10px;
 }
 
 #small_italic_text {
   color: {{ opacity(text, 150) }};
-  font-size: {{ font_size }};
+  font-size: 12px;
   font-style: italic;
 }
 
-#plugin_manager_process_status{
+#pip_install_status{
   background: {{ background }};
   color: {{ opacity(text, 200) }};
 }
@@ -721,7 +676,7 @@ QPushButton#close_button:disabled {
 }
 
 #success_label {
-  image: url("theme_{{ id }}:/check.svg");
+  image: url("theme_{{ name }}:/check.svg");
   max-width: 18px;
   max-height: 18px;
   min-width: 18px;
@@ -773,12 +728,12 @@ QtWelcomeWidget[drag=true] {
 
 QtWelcomeLabel {
  color: {{ foreground }};
- font-size: {{ increase(font_size, 8) }};
+ font-size: 20px;
 }
 
 QtShortcutLabel {
  color: {{ foreground }};
- font-size: {{ increase(font_size, 4) }};
+ font-size: 16px;
 }
 
 
@@ -834,7 +789,7 @@ QtListView::item:selected:!active {
 QtListView QLineEdit {
   background-color: {{ darken(current, 20) }};
   selection-background-color: {{ lighten(current, 20) }};
-  font-size: {{ font_size }};
+  font-size: 12px;
 }
 
 QtLayerList::item {

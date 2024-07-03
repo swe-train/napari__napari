@@ -156,18 +156,18 @@ class ColorManager(EventedModel):
     )
 
     # validators
-    @validator('continuous_colormap', pre=True, allow_reuse=True)
+    @validator('continuous_colormap', pre=True)
     def _ensure_continuous_colormap(cls, v):
         return ensure_colormap(v)
 
-    @validator('colors', pre=True, allow_reuse=True)
+    @validator('colors', pre=True)
     def _ensure_color_array(cls, v):
         if len(v) > 0:
             return transform_color(v)
 
         return np.empty((0, 4))
 
-    @validator('current_color', pre=True, allow_reuse=True)
+    @validator('current_color', pre=True)
     def _coerce_current_color(cls, v):
         if v is None:
             return v
@@ -176,7 +176,7 @@ class ColorManager(EventedModel):
 
         return transform_color(v)[0]
 
-    @root_validator(allow_reuse=True)
+    @root_validator()
     def _validate_colors(cls, values):
         color_mode = values['color_mode']
         if color_mode == ColorMode.CYCLE:
@@ -422,7 +422,7 @@ class ColorManager(EventedModel):
                     )
 
     def _update_current_color(
-        self, current_color: np.ndarray, update_indices: Optional[list] = None
+        self, current_color: np.ndarray, update_indices: list = ()
     ):
         """Update the current color and update the colors if requested.
 
@@ -438,8 +438,6 @@ class ColorManager(EventedModel):
             If the ColorManager is not in DIRECT mode, updating the values
             will change the mode to DIRECT.
         """
-        if update_indices is None:
-            update_indices = []
         self.current_color = transform_color(current_color)[0]
         if update_indices:
             self.color_mode = ColorMode.DIRECT

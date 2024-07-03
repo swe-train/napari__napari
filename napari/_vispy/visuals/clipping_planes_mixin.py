@@ -22,11 +22,10 @@ class ClippingPlanesMixin:
     """
 
     def __init__(self: _PVisual, *args, **kwargs) -> None:
-        clip_filter = PlanesClipper()
-        self._clip_filter = clip_filter
+        self._clip_filter = PlanesClipper()
         super().__init__(*args, **kwargs)
 
-        self.attach(clip_filter)
+        self.attach(self._clip_filter)
 
     @property
     def clipping_planes(self):

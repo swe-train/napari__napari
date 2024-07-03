@@ -7,8 +7,6 @@ from napari.utils.events.containers import EventedSet
 from napari.utils.events.event import EmitterGroup, Event
 from napari.utils.translations import trans
 
-__all__ = ["progress", "progrange", "cancelable_progress"]
-
 
 class progress(tqdm):
     """This class inherits from tqdm and provides an interface for
@@ -108,9 +106,7 @@ class progress(tqdm):
         self._total = total
         self.events.total(value=self.total)
 
-    def display(
-        self, msg: Optional[str] = None, pos: Optional[int] = None
-    ) -> None:
+    def display(self, msg: str = None, pos: int = None) -> None:
         """Update the display and emit eta event."""
         # just plain tqdm if we don't have gui
         if not self.gui and not self.is_init:

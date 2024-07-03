@@ -5,7 +5,6 @@ from typing import (
     Iterator,
     Mapping,
     MutableMapping,
-    Optional,
     Sequence,
     Type,
     TypeVar,
@@ -21,7 +20,7 @@ class TypedMutableMapping(MutableMapping[_K, _T]):
 
     def __init__(
         self,
-        data: Optional[Mapping[_K, _T]] = None,
+        data: Mapping[_K, _T] = None,
         basetype: Union[Type[_T], Sequence[Type[_T]]] = (),
     ) -> None:
         if data is None:

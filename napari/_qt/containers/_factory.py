@@ -8,13 +8,11 @@ from napari.utils.translations import trans
 from napari.utils.tree import Group
 
 if TYPE_CHECKING:
-    from typing import Optional
-
-    from qtpy.QtWidgets import QWidget  # type: ignore[attr-defined]
+    from qtpy.QtWidgets import QWidget
 
 
 def create_view(
-    obj: Union[SelectableEventedList, Group], parent: Optional[QWidget] = None
+    obj: Union[SelectableEventedList, Group], parent: QWidget = None
 ):
     """Create a `QtListView`, or `QtNodeTreeView` for `obj`.
 
@@ -48,7 +46,7 @@ def create_view(
 
 
 def create_model(
-    obj: Union[SelectableEventedList, Group], parent: Optional[QWidget] = None
+    obj: Union[SelectableEventedList, Group], parent: QWidget = None
 ):
     """Create a `QtListModel`, or `QtNodeTreeModel` for `obj`.
 
