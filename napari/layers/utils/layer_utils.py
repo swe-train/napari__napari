@@ -3,17 +3,7 @@ from __future__ import annotations
 import functools
 import inspect
 import warnings
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Dict,
-    List,
-    NamedTuple,
-    Optional,
-    Sequence,
-    Tuple,
-    Union,
-)
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import dask
 import numpy as np
@@ -24,43 +14,12 @@ from napari.utils.events.custom_types import Array
 from napari.utils.transforms import Affine
 from napari.utils.translations import trans
 
-if TYPE_CHECKING:
-    from typing import Mapping
-
-    import numpy.typing as npt
-
-
-class Extent(NamedTuple):
-    """Extent of coordinates in a local data space and world space.
-
-    Each extent is a (2, D) array that stores the minimum and maximum coordinate
-    values in each of D dimensions. Both the minimum and maximum coordinates are
-    inclusive so form an axis-aligned, closed interval or a D-dimensional box
-    around all the coordinates.
-
-    Attributes
-    ----------
-    data : (2, D) array of floats
-        The minimum and maximum raw data coordinates ignoring any transforms like
-        translation or scale.
-    world : (2, D) array of floats
-        The minimum and maximum world coordinates after applying a transform to the
-        raw data coordinates that brings them into a potentially shared world space.
-    step : (D,) array of floats
-        The step in each dimension that when taken from the minimum world coordinate,
-        should form a regular grid that eventually hits the maximum world coordinate.
-    """
-
-    data: np.ndarray
-    world: np.ndarray
-    step: np.ndarray
-
 
 def register_layer_action(
     keymapprovider,
     description: str,
     repeatable: bool = False,
-    shortcuts: Optional[str] = None,
+    shortcuts: str = None,
 ):
     """
     Convenient decorator to register an action with the current Layers
@@ -204,7 +163,7 @@ def _nanmax(array):
     return max_value
 
 
-def calc_data_range(data, rgb=False) -> Tuple[float, float]:
+def calc_data_range(data, rgb=False):
     """Calculate range of data values. If all values are equal return [0, 1].
 
     Parameters
@@ -216,8 +175,8 @@ def calc_data_range(data, rgb=False) -> Tuple[float, float]:
 
     Returns
     -------
-    values : pair of floats
-        Minimum and maximum values in that order.
+    values : list of float
+        Range of values.
 
     Notes
     -----
@@ -225,9 +184,7 @@ def calc_data_range(data, rgb=False) -> Tuple[float, float]:
     returned.
     """
     if data.dtype == np.uint8:
-        return (0, 255)
-
-    center: Union[int, List[int]]
+        return [0, 255]
 
     if data.size > 1e7 and (data.ndim == 1 or (rgb and data.ndim == 2)):
         # If data is very large take the average of start, middle and end.
@@ -278,7 +235,7 @@ def calc_data_range(data, rgb=False) -> Tuple[float, float]:
     if min_val == max_val:
         min_val = 0
         max_val = 1
-    return (float(min_val), float(max_val))
+    return [float(min_val), float(max_val)]
 
 
 def segment_normal(a, b, p=(0, 0, 1)):
@@ -320,7 +277,7 @@ def segment_normal(a, b, p=(0, 0, 1)):
     return unit_norm
 
 
-def convert_to_uint8(data: np.ndarray) -> Optional[np.ndarray]:
+def convert_to_uint8(data: np.ndarray) -> np.ndarray:
     """
     Convert array content to uint8, always returning a copy.
 
@@ -368,6 +325,79 @@ def convert_to_uint8(data: np.ndarray) -> Optional[np.ndarray]:
             out_dtype
         )
     return None
+
+
+def prepare_properties(
+    properties: Optional[Union[Dict[str, Array], pd.DataFrame]],
+    choices: Optional[Dict[str, Array]] = None,
+    num_data: int = 0,
+    save_choices: bool = False,
+) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
+    """Prepare properties and choices into standard forms.
+    Parameters
+    ----------
+    properties : dict[str, Array] or DataFrame
+        The property values.
+    choices : dict[str, Array]
+        The property value choices.
+    num_data : int
+        The length of data that the properties represent (e.g. number of points).
+    save_choices : bool
+        If true, always return all of the properties in choices.
+    Returns
+    -------
+    properties: dict[str, np.ndarray]
+        A dictionary where the key is the property name and the value
+        is an ndarray of property values.
+    choices: dict[str, np.ndarray]
+        A dictionary where the key is the property name and the value
+        is an ndarray of unique property value choices.
+    """
+    # If there is no data, non-empty properties represent choices as a deprecated behavior.
+    if num_data == 0 and properties:
+        warnings.warn(
+            trans._(
+                "Property choices should be passed as property_choices, not properties. This warning will become an error in version 0.4.11.",
+            ),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        choices = properties
+        properties = {}
+
+    properties = validate_properties(properties, expected_len=num_data)
+    choices = _validate_property_choices(choices)
+
+    # Populate the new choices by using the property keys and merging the
+    # corresponding unique property and choices values.
+    new_choices = {
+        k: np.unique(np.concatenate((v, choices.get(k, []))))
+        for k, v in properties.items()
+    }
+
+    # If there are no properties, and thus no new choices, populate new choices
+    # from the input choices, and initialize property values as missing or empty.
+    if len(new_choices) == 0:
+        new_choices = {k: np.unique(v) for k, v in choices.items()}
+        if len(new_choices) > 0:
+            if num_data > 0:
+                properties = {
+                    k: np.array([None] * num_data) for k in new_choices
+                }
+            else:
+                properties = {
+                    k: np.empty(0, v.dtype) for k, v in new_choices.items()
+                }
+
+    # For keys that are in the input choices, but not in the new choices,
+    # sometimes add appropriate array values to new choices and properties.
+    if save_choices:
+        for k, v in choices.items():
+            if k not in new_choices:
+                new_choices[k] = np.unique(v)
+                properties[k] = np.array([None] * num_data)
+
+    return properties, new_choices
 
 
 def get_current_properties(
@@ -494,8 +524,8 @@ def _coerce_current_properties_value(
 
 
 def coerce_current_properties(
-    current_properties: Mapping[
-        str, Union[float, str, int, bool, list, tuple, npt.NDArray]
+    current_properties: Dict[
+        str, Union[float, str, int, bool, list, tuple, np.ndarray]
     ]
 ) -> Dict[str, np.ndarray]:
     """Coerce a current_properties dictionary into the correct type.
@@ -661,13 +691,11 @@ def dims_displayed_world_to_layer(
     else:
         order = dims_displayed_world
     offset = ndim_world - ndim_layer
-
-    order_arr = np.array(order)
+    order = np.array(order)
     if offset <= 0:
-        order = list(range(-offset)) + list(order_arr - offset)
+        order = list(range(-offset)) + list(order - offset)
     else:
-        order = list(order_arr[order_arr >= offset] - offset)
-
+        order = list(order[order >= offset] - offset)
     n_display_world = len(dims_displayed_world)
     if n_display_world > ndim_layer:
         n_display_layer = ndim_layer
@@ -678,7 +706,7 @@ def dims_displayed_world_to_layer(
     return dims_displayed
 
 
-def get_extent_world(data_extent, data_to_world, centered=None):
+def get_extent_world(data_extent, data_to_world, centered=False):
     """Range of layer in world coordinates base on provided data_extent
 
     Parameters
@@ -687,23 +715,19 @@ def get_extent_world(data_extent, data_to_world, centered=None):
         Extent of layer in data coordinates.
     data_to_world : napari.utils.transforms.Affine
         The transform from data to world coordinates.
+    centered : bool
+        If pixels should be centered. By default False.
 
     Returns
     -------
     extent_world : array, shape (2, D)
     """
-    if centered is not None:
-        warnings.warn(
-            trans._(
-                'The `centered` argument is deprecated. '
-                'Extents are now always centered on data points.',
-                deferred=True,
-            ),
-            stacklevel=2,
-        )
-
     D = data_extent.shape[1]
-    full_data_extent = np.array(np.meshgrid(*data_extent.T)).T.reshape(-1, D)
+    # subtract 0.5 to get from pixel center to pixel edge
+    offset = 0.5 * bool(centered)
+    pixel_extents = tuple(d - offset for d in data_extent.T)
+
+    full_data_extent = np.array(np.meshgrid(*pixel_extents)).T.reshape(-1, D)
     full_world_extent = data_to_world(full_data_extent)
     world_extent = np.array(
         [
@@ -819,7 +843,7 @@ class _FeatureTable:
 
     def set_currents(
         self,
-        currents: Dict[str, npt.NDArray],
+        currents: Dict[str, np.ndarray],
         *,
         update_indices: Optional[List[int]] = None,
     ) -> None:

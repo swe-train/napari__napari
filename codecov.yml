@@ -1,7 +1,6 @@
 ignore:
   - napari/_version.py
   - napari/resources
-  - napari/benchmarks
 coverage:
   status:
     project:

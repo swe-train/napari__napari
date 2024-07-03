@@ -18,7 +18,6 @@ from napari.layers import Points
 from napari.layers.base._base_constants import ActionType
 from napari.layers.points._points_constants import Mode
 from napari.layers.points._points_utils import points_to_squares
-from napari.layers.utils._slice_input import _SliceInput
 from napari.layers.utils._text_constants import Anchor
 from napari.layers.utils.color_encoding import ConstantColorEncoding
 from napari.layers.utils.color_manager import ColorProperties
@@ -1639,9 +1638,6 @@ def test_message_3d():
     np.random.seed(0)
     data = 20 * np.random.random(shape)
     layer = Points(data)
-    layer._slice_input = _SliceInput(
-        ndisplay=3, point=(0, 0, 0), order=(0, 1, 2)
-    )
     msg = layer.get_status(
         (0, 0, 0), view_direction=[1, 0, 0], dims_displayed=[0, 1, 2]
     )
@@ -1795,7 +1791,7 @@ def test_world_data_extent():
     max_val = (7, 30, 15)
     layer = Points(data)
     extent = np.array((min_val, max_val))
-    check_layer_world_data_extent(layer, extent, (3, 1, 1), (10, 20, 5))
+    check_layer_world_data_extent(layer, extent, (3, 1, 1), (10, 20, 5), False)
 
 
 def test_scale_init():
@@ -2416,36 +2412,6 @@ def test_set_drag_start():
     np.testing.assert_array_equal(layer._drag_start, position)
     layer._set_drag_start({0}, position=(1, 2))
     np.testing.assert_array_equal(layer._drag_start, position)
-
-
-@pytest.mark.parametrize(
-    "dims_indices,target_indices",
-    [
-        ((8, slice(None), slice(None)), [2]),
-        ((10, slice(None), slice(None)), [0, 1, 3, 4]),
-        ((10 + 2 * 1e-12, slice(None), slice(None)), [0, 1, 3, 4]),
-        ((10.1, slice(None), slice(None)), [0, 1, 3, 4]),
-    ],
-)
-def test_point_slice_request_response(dims_indices, target_indices):
-    """Test points slicing with request and response."""
-    data = [
-        (10, 2, 4),
-        (10 + 2 * 1e-7, 4, 6),
-        (8, 1, 7),
-        (10.1, 7, 2),
-        (10 - 2 * 1e-7, 1, 6),
-    ]
-
-    layer = Points(data)
-
-    request = layer._make_slice_request_internal(
-        layer._slice_input, dims_indices
-    )
-    response = request()
-
-    assert len(response.indices) == len(target_indices)
-    assert all(a == b for a, b in zip(response.indices, target_indices))
 
 
 def test_editable_and_visible_are_independent():

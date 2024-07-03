@@ -36,27 +36,29 @@ class BoundingBox(Compound):
         self._marker_color = (1, 1, 1, 1)
         self._marker_size = 1
 
-        super().__init__([Line(), Markers(antialias=0)], *args, **kwargs)
+        super().__init__(
+            [Line(), Line(), Markers(antialias=0)], *args, **kwargs
+        )
 
     @property
-    def lines(self):
+    def line2d(self):
         return self._subvisuals[0]
 
     @property
-    def markers(self):
+    def line3d(self):
         return self._subvisuals[1]
 
-    def set_bounds(self, bounds):
-        """Update the bounding box based on a layer's bounds."""
-        if any(b is None for b in bounds):
-            return
+    @property
+    def markers(self):
+        return self._subvisuals[2]
 
-        vertices = np.array(list(product(*bounds)))
+    def _set_bounds_2d(self, vertices):
+        # only the front face is needed for 2D
+        edges = self._edges[:4]
 
-        self.lines.set_data(
-            pos=vertices, connect=self._edges.copy(), color='red', width=2
-        )
-        self.lines.visible = True
+        self.line2d.set_data(pos=vertices, connect=edges)
+        self.line2d.visible = True
+        self.line3d.visible = False
 
         self.markers.set_data(
             pos=vertices,
@@ -64,3 +66,35 @@ class BoundingBox(Compound):
             face_color=self._marker_color,
             edge_width=0,
         )
+
+    def _set_bounds_3d(self, vertices):
+        # pixels in 3D are shifted by half in napari compared to vispy
+        # TODO: find exactly where this difference is and write it here
+        vertices = vertices - 0.5
+
+        self.line3d.set_data(
+            pos=vertices, connect=self._edges.copy(), color='red', width=2
+        )
+        self.line3d.visible = True
+        self.line2d.visible = False
+
+        self.markers.set_data(
+            pos=vertices,
+            size=self._marker_size,
+            face_color=self._marker_color,
+            edge_width=0,
+        )
+
+    def set_bounds(self, bounds):
+        """
+        Takes another node to generate its bounding box.
+        """
+        vertices = np.array(list(product(*bounds)))
+
+        if any(b is None for b in bounds):
+            return
+
+        if len(bounds) == 2:
+            self._set_bounds_2d(vertices)
+        else:
+            self._set_bounds_3d(vertices)

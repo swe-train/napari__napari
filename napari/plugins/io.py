@@ -100,27 +100,13 @@ def read_data_with_plugins(
             raise ValueError(message)
 
         if plugin not in plugin_manager.plugins:
-            names = set(_npe2.get_readers().keys()).union(
-                {i.plugin_name for i in hook_caller.get_hookimpls()}
-            )
-            err_helper = (
-                trans._(
-                    "No readers are available. "
-                    "Do you have any plugins installed?",
-                    deferred=True,
-                )
-                if len(names) <= 1
-                else trans._(
-                    f"\nNames of plugins offering readers are: {names}.",
-                    deferred=True,
-                )
-            )
+            names = {i.plugin_name for i in hook_caller.get_hookimpls()}
             raise ValueError(
                 trans._(
-                    "There is no registered plugin named '{plugin}'. {err_helper}",
+                    "There is no registered plugin named '{plugin}'.\nNames of plugins offering readers are: {names}",
                     deferred=True,
                     plugin=plugin,
-                    err_helper=err_helper,
+                    names=names,
                 )
             )
         reader = hook_caller._call_plugin(plugin, path=npe1_path)

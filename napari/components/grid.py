@@ -30,10 +30,8 @@ class GridCanvas(EventedModel):
     """
 
     # fields
-    # See https://github.com/pydantic/pydantic/issues/156 for why
-    # these need a type: ignore comment
-    stride: GridStride = 1  # type: ignore[valid-type]
-    shape: Tuple[GridHeight, GridWidth] = (-1, -1)  # type: ignore[valid-type]
+    stride: GridStride = 1
+    shape: Tuple[GridHeight, GridWidth] = (-1, -1)
     enabled: bool = False
 
     def actual_shape(self, nlayers: int = 1) -> Tuple[int, int]:

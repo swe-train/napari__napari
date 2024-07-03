@@ -205,7 +205,7 @@ def test_world_data_extent():
     max_val = (30, 15)
     layer = Surface((np.array(data), np.array((0, 1, 2)), np.array((0, 0, 0))))
     extent = np.array((min_val, max_val))
-    check_layer_world_data_extent(layer, extent, (3, 1), (20, 5))
+    check_layer_world_data_extent(layer, extent, (3, 1), (20, 5), False)
 
 
 def test_shading():
@@ -369,7 +369,7 @@ def test_surface_normals():
     faces = np.array([[0, 1, 2], [3, 4, 5], [6, 7, 8]])
     values = np.array([1, 2, 3, 1, 2, 3, 1, 2, 3])
 
-    normals = {"face": {"visible": True, "color": 'red'}}
+    normals = {'face': {'visible': True, 'color': 'red'}}
     surface_layer = Surface((vertices, faces, values), normals=normals)
     assert isinstance(surface_layer.normals, SurfaceNormals)
     assert surface_layer.normals.face.visible is True
@@ -404,7 +404,7 @@ def test_surface_wireframe():
     faces = np.array([[0, 1, 2], [3, 4, 5], [6, 7, 8]])
     values = np.array([1, 2, 3, 1, 2, 3, 1, 2, 3])
 
-    wireframe = {"visible": True, "color": 'red'}
+    wireframe = {'visible': True, 'color': 'red'}
     surface_layer = Surface((vertices, faces, values), wireframe=wireframe)
     assert isinstance(surface_layer.wireframe, SurfaceWireframe)
     assert surface_layer.wireframe.visible is True

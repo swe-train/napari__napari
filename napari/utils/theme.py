@@ -5,7 +5,7 @@ import re
 import warnings
 from ast import literal_eval
 from contextlib import suppress
-from typing import Any, Dict, List, Literal, Optional, Union, overload
+from typing import List, Union
 
 import npe2
 from pydantic import validator
@@ -82,7 +82,7 @@ class Theme(EventedModel):
     error: Color
     current: Color
 
-    @validator("syntax_style", pre=True, allow_reuse=True)
+    @validator("syntax_style", pre=True)
     def _ensure_syntax_style(value: str) -> str:
         from pygments.styles import STYLE_MAP
 
@@ -93,16 +93,6 @@ class Theme(EventedModel):
             value=value,
         )
         return value
-
-    def to_rgb_dict(self) -> Dict[str, Any]:
-        """
-        This differs from baseclass `dict()` by converting colors to rgb.
-        """
-        th = super().dict()
-        return {
-            k: v if not isinstance(v, Color) else v.as_rgb()
-            for (k, v) in th.items()
-        }
 
 
 gradient_pattern = re.compile(r'([vh])gradient\((.+)\)')
@@ -200,17 +190,7 @@ def get_system_theme() -> str:
     return id_
 
 
-@overload
-def get_theme(theme_id: str, as_dict: Literal[False]) -> Theme:
-    ...
-
-
-@overload
-def get_theme(theme_id: str, as_dict: Literal[True]) -> Dict[str, Any]:
-    ...
-
-
-def get_theme(theme_id: str, as_dict: Optional[bool] = None):
+def get_theme(theme_id, as_dict=None):
     """Get a copy of theme based on it's id.
 
     If you get a copy of the theme, changes to the theme model will not be
@@ -222,10 +202,6 @@ def get_theme(theme_id: str, as_dict: Optional[bool] = None):
     theme_id : str
         ID of requested theme.
     as_dict : bool
-        .. deprecated:: 0.5.0
-
-            Use ``get_theme(...).to_rgb_dict()``
-
         Flag to indicate that the old-style dictionary
         should be returned. This will emit deprecation warning.
 
@@ -248,20 +224,27 @@ def get_theme(theme_id: str, as_dict: Optional[bool] = None):
                 themes=available_themes(),
             )
         )
-    theme = _themes[theme_id].copy()
-    if as_dict is not None:
+    theme = _themes[theme_id]
+    _theme = theme.copy()
+    if as_dict is None:
         warnings.warn(
             trans._(
-                "The `as_dict` kwarg has been deprecated since Napari 0.5.0 and "
-                "will be removed in future version. You can use `get_theme(...).to_rgb_dict()`",
+                "The `as_dict` kwarg default to False` since Napari 0.4.17, "
+                "and will become a mandatory parameter in the future.",
                 deferred=True,
             ),
             category=FutureWarning,
             stacklevel=2,
         )
+        as_dict = False
     if as_dict:
-        return theme.to_rgb_dict()
-    return theme
+        _theme = _theme.dict()
+        _theme = {
+            k: v if not isinstance(v, Color) else v.as_rgb()
+            for (k, v) in _theme.items()
+        }
+        return _theme
+    return _theme
 
 
 _themes: EventedDict[str, Theme] = EventedDict(basetype=Theme)

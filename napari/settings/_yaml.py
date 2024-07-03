@@ -3,7 +3,6 @@ from __future__ import annotations
 from enum import Enum
 from typing import TYPE_CHECKING, Type
 
-from app_model.types import KeyBinding
 from pydantic import BaseModel
 from yaml import SafeDumper, dump_all
 
@@ -43,9 +42,6 @@ YamlDumper.add_representer(
 )
 YamlDumper.add_representer(
     Version, lambda dumper, data: dumper.represent_str(str(data))
-)
-YamlDumper.add_representer(
-    KeyBinding, lambda dumper, data: dumper.represent_str(str(data))
 )
 
 

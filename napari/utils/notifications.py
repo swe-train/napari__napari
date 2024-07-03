@@ -37,9 +37,7 @@ __all__ = [
     'ErrorNotification',
     'WarningNotification',
     'NotificationManager',
-    'show_debug',
     'show_info',
-    'show_warning',
     'show_error',
     'show_console_notification',
 ]
@@ -242,9 +240,9 @@ class NotificationManager:
         self.notification_ready = self.changed = EventEmitter(
             source=self, event_class=Notification
         )
-        self._originals_except_hooks: List[Callable] = []
-        self._original_showwarnings_hooks: List[Callable] = []
-        self._originals_thread_except_hooks: List[Callable] = []
+        self._originals_except_hooks = []
+        self._original_showwarnings_hooks = []
+        self._originals_thread_except_hooks = []
 
     def __enter__(self):
         self.install_hooks()
@@ -289,21 +287,13 @@ class NotificationManager:
         self.records.append(notification)
         self.notification_ready(notification)
 
-    def receive_thread_error(
-        self,
-        args: Tuple[
-            Type[BaseException],
-            BaseException,
-            Optional[TracebackType],
-            Optional[threading.Thread],
-        ],
-    ):
+    def receive_thread_error(self, args: threading.ExceptHookArgs):
         self.receive_error(*args)
 
     def receive_error(
         self,
-        exctype: Type[BaseException],
-        value: BaseException,
+        exctype: Optional[Type[BaseException]] = None,
+        value: Optional[BaseException] = None,
         traceback: Optional[TracebackType] = None,
         thread: Optional[threading.Thread] = None,
     ):
@@ -340,15 +330,6 @@ class NotificationManager:
 
 
 notification_manager = NotificationManager()
-
-
-def show_debug(message: str):
-    """
-    Show a debug message in the notification manager.
-    """
-    notification_manager.dispatch(
-        Notification(message, severity=NotificationSeverity.DEBUG)
-    )
 
 
 def show_info(message: str):

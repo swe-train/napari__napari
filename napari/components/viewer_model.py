@@ -23,7 +23,6 @@ import numpy as np
 from pydantic import Extra, Field, PrivateAttr, validator
 
 from napari import layers
-from napari.components._layer_slicer import _LayerSlicer
 from napari.components._viewer_mouse_bindings import dims_scroll
 from napari.components.camera import Camera
 from napari.components.cursor import Cursor
@@ -136,37 +135,12 @@ class ViewerModel(KeymapProvider, MousemapProvider, EventedModel):
 
     Attributes
     ----------
-    camera: napari.components.camera.Camera
-        The camera object modeling the position and view.
-    cursor: napari.components.cursor.Cursor
-        The cursor object containing the position and properties of the cursor.
-    dims : napari.components.dims.Dimensions
-        Contains axes, indices, dimensions and sliders.
-    grid: napari.components.grid.Gridcanvas
-        Gridcanvas allowing for the current implementation of a gridview of the canvas.
-    help: str
-        A help message of the viewer model
-    layers : napari.components.layerlist.LayerList
-        List of contained layers.
-    mouse_over_canvas: bool
-        Indicating whether the mouse cursor is on the viewer canvas.
-    theme: str
-        Name of the Napari theme of the viewer
-    title: str
-        The title of the viewer model
-    tooltip: napari.components.tooltip.Tooltip
-        A tooltip showing extra information on the cursor
-    window : napari._qt.qt_main_window.Window
+    window : napari.window.Window
         Parent window.
-    _canvas_size: Tuple[int, int]
-        The canvas size following the Numpy convention of height x width
-    _ctx: Mapping
-        Viewer object context mapping.
-    _layer_slicer: napari.components._layer_slicer._Layer_Slicer
-        A layer slicer object controlling the creation of a slice
-    _overlays: napari.utils.events.containers._evented_dict.EventedDict[str, Overlay]
-        An EventedDict with as keys the string names of different napari overlays and as values the napari.Overlay
-        objects.
+    layers : LayerList
+        List of contained layers.
+    dims : Dimensions
+        Contains axes, indices, dimensions and sliders.
     """
 
     # Using allow_mutation=False means these attributes aren't settable and don't
@@ -188,15 +162,11 @@ class ViewerModel(KeymapProvider, MousemapProvider, EventedModel):
         default_factory=EventedDict
     )
     # 2-tuple indicating height and width
-    _canvas_size: Tuple[int, int] = (800, 600)
+    _canvas_size: Tuple[int, int] = (600, 800)
     _ctx: Mapping
     # To check if mouse is over canvas to avoid race conditions between
     # different events systems
     mouse_over_canvas: bool = False
-
-    # Need to use default factory because slicer is not copyable which
-    # is required for default values.
-    _layer_slicer: _LayerSlicer = PrivateAttr(default_factory=_LayerSlicer)
 
     def __init__(
         self, title='napari', ndisplay=2, order=(), axis_labels=()
@@ -235,7 +205,6 @@ class ViewerModel(KeymapProvider, MousemapProvider, EventedModel):
         settings.application.events.grid_height.connect(
             self._update_viewer_grid
         )
-        settings.experimental.events.async_.connect(self._update_async)
 
         # Add extra events - ideally these will be removed too!
         self.events.add(
@@ -344,7 +313,7 @@ class ViewerModel(KeymapProvider, MousemapProvider, EventedModel):
         return f'napari.Viewer: {self.title}'
 
     @property
-    def _sliced_extent_world_augmented(self) -> np.ndarray:
+    def _sliced_extent_world(self) -> np.ndarray:
         """Extent of layers in world coordinates after slicing.
 
         D is either 2 or 3 depending on if the displayed data is 2D or 3D.
@@ -353,17 +322,20 @@ class ViewerModel(KeymapProvider, MousemapProvider, EventedModel):
         -------
         sliced_extent_world : array, shape (2, D)
         """
-        # if not layers are present, assume image-like with dimensions of size 512
-        if len(self.layers) == 0:
+        if len(self.layers) == 0 and self.dims.ndim != 2:
+            # If no data is present and dims model has not been reset to 0
+            # than someone has passed more than two axis labels which are
+            # being saved and so default values are used.
             return np.vstack(
-                [np.full(self.dims.ndim, -0.5), np.full(self.dims.ndim, 511.5)]
+                [np.zeros(self.dims.ndim), np.repeat(512, self.dims.ndim)]
             )
-        return self.layers._extent_world_augmented[:, self.dims.displayed]
+
+        return self.layers.extent.world[:, self.dims.displayed]
 
     def reset_view(self):
         """Reset the camera view."""
 
-        extent = self._sliced_extent_world_augmented
+        extent = self._sliced_extent_world
         scene_size = extent[1] - extent[0]
         corner = extent[0]
         grid_size = list(self.grid.actual_shape(len(self.layers)))
@@ -400,18 +372,13 @@ class ViewerModel(KeymapProvider, MousemapProvider, EventedModel):
         extent = layers_extent.world
         scale = layers_extent.step
         scene_size = extent[1] - extent[0]
-        corner = extent[0]
+        corner = extent[0] + 0.5 * layers_extent.step
         shape = [
-            np.round(s / sc).astype('int') + 1
+            np.round(s / sc).astype('int') if s > 0 else 1
             for s, sc in zip(scene_size, scale)
         ]
         empty_labels = np.zeros(shape, dtype=int)
         self.add_labels(empty_labels, translate=np.array(corner), scale=scale)
-
-    def _on_layer_reload(self, event: Event) -> None:
-        self._layer_slicer.submit(
-            layers=[event.layer], dims=self.dims, force=True
-        )
 
     def _update_layers(self, *, layers=None):
         """Updates the contained layers.
@@ -422,10 +389,10 @@ class ViewerModel(KeymapProvider, MousemapProvider, EventedModel):
             List of layers to update. If none provided updates all.
         """
         layers = layers or self.layers
-        self._layer_slicer.submit(layers=layers, dims=self.dims)
-        # If the currently selected layer is sliced asynchronously, then the value
-        # shown with this position may be incorrect. See the discussion for more details:
-        # https://github.com/napari/napari/pull/5377#discussion_r1036280855
+        for layer in layers:
+            layer._slice_dims(
+                self.dims.point, self.dims.ndisplay, self.dims.order
+            )
         position = list(self.cursor.position)
         for ind in self.dims.order[: -self.dims.ndisplay]:
             position[ind] = self.dims.point[ind]
@@ -462,9 +429,9 @@ class ViewerModel(KeymapProvider, MousemapProvider, EventedModel):
             self.dims.reset()
         else:
             ranges = self.layers._ranges
-            # TODO: can be optimized with dims.update(), but events need fixing
-            self.dims.ndim = len(ranges)
-            self.dims.range = ranges
+            ndim = len(ranges)
+            self.dims.ndim = ndim
+            self.dims.set_range(range(ndim), ranges)
 
         new_dim = self.dims.ndim
         dim_diff = new_dim - len(self.cursor.position)
@@ -493,10 +460,6 @@ class ViewerModel(KeymapProvider, MousemapProvider, EventedModel):
     def _update_cursor_size(self, event):
         """Set the viewer cursor_size with the `event.cursor_size` int."""
         self.cursor.size = event.cursor_size
-
-    def _update_async(self, event: Event) -> None:
-        """Set layer slicer to force synchronous if async is disabled."""
-        self._layer_slicer._force_sync = not event.value
 
     def _update_status_bar_from_cursor(self, event=None):
         """Update the status bar based on the current cursor position.
@@ -528,7 +491,7 @@ class ViewerModel(KeymapProvider, MousemapProvider, EventedModel):
 
     def _on_grid_change(self):
         """Arrange the current layers is a 2D grid."""
-        extent = self._sliced_extent_world_augmented
+        extent = self._sliced_extent_world
         n_layers = len(self.layers)
         for i, layer in enumerate(self.layers):
             i_row, i_column = self.grid.position(n_layers - 1 - i, n_layers)
@@ -588,7 +551,6 @@ class ViewerModel(KeymapProvider, MousemapProvider, EventedModel):
         layer.events.shear.connect(self._on_layers_change)
         layer.events.affine.connect(self._on_layers_change)
         layer.events.name.connect(self.layers._update_name)
-        layer.events.reload.connect(self._on_layer_reload)
         if hasattr(layer.events, "mode"):
             layer.events.mode.connect(self._on_layer_mode_change)
         self._layer_help_from_mode(layer)
@@ -984,7 +946,6 @@ class ViewerModel(KeymapProvider, MousemapProvider, EventedModel):
         """
         from napari.plugins import _npe2, plugin_manager
 
-        plugin_spec_reader = None
         # try with npe2
         data, available = _npe2.get_sample_data(plugin, sample)
 
@@ -996,14 +957,6 @@ class ViewerModel(KeymapProvider, MousemapProvider, EventedModel):
                 available += list(plugin_manager.available_samples())
         # npe2 uri sample data, extract the path so we can use viewer.open
         elif hasattr(data.__self__, 'uri'):
-            if (
-                hasattr(data.__self__, 'reader_plugin')
-                and data.__self__.reader_plugin != reader_plugin
-            ):
-                # if the user chose a reader_plugin, we use their choice
-                # but we remember what the plugin declared so we can inform the user if it fails
-                plugin_spec_reader = data.__self__.reader_plugin
-                reader_plugin = reader_plugin or plugin_spec_reader
             data = data.__self__.uri
 
         if data is None:
@@ -1038,25 +991,7 @@ class ViewerModel(KeymapProvider, MousemapProvider, EventedModel):
                     added.extend(self._add_layer_from_data(*datum))
                 return added
             if isinstance(data, (str, Path)):
-                try:
-                    return self.open(data, plugin=reader_plugin)
-                except Exception as e:
-                    # user chose a different reader to the one specified by the plugin
-                    # and it failed - let them know the plugin declared something else
-                    if (
-                        plugin_spec_reader is not None
-                        and reader_plugin != plugin_spec_reader
-                    ):
-                        raise ValueError(
-                            trans._(
-                                "Chosen reader {chosen_reader} failed to open sample. Plugin {plugin} declares {original_reader} as the reader for this sample - try calling `open_sample` with no `reader_plugin` or passing {original_reader} explicitly.",
-                                deferred=True,
-                                plugin=plugin,
-                                chosen_reader=reader_plugin,
-                                original_reader=plugin_spec_reader,
-                            )
-                        ) from e
-                    raise e  # noqa: TRY201
+                return self.open(data, plugin=reader_plugin)
 
             raise TypeError(
                 trans._(

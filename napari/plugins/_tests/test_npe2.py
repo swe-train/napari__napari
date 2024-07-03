@@ -15,7 +15,6 @@ from napari.layers import Image, Points
 from napari.plugins import _npe2
 
 PLUGIN_NAME = 'my-plugin'  # this matches the sample_manifest
-PLUGIN_DISPLAY_NAME = 'My Plugin'  # this matches the sample_manifest
 MANIFEST_PATH = Path(__file__).parent / '_sample_manifest.yaml'
 
 
@@ -38,9 +37,9 @@ def test_read(mock_pm: 'TestPluginManager'):
     mock_pm.commands.get.reset_mock()
     _, hookimpl = _npe2.read(["some.fzzy"], stack=True)
     mock_pm.commands.get.assert_called_once_with(f'{PLUGIN_NAME}.some_reader')
+
     mock_pm.commands.get.reset_mock()
-    with pytest.raises(ValueError):
-        _npe2.read(["some.randomext"], stack=False)
+    assert _npe2.read(["some.randomext"], stack=True) is None
     mock_pm.commands.get.assert_not_called()
 
     mock_pm.commands.get.reset_mock()
@@ -63,7 +62,8 @@ def test_read(mock_pm: 'TestPluginManager'):
     reason='Older versions of npe2 do not throw specific error.',
 )
 def test_read_with_plugin_failure(mock_pm: 'TestPluginManager'):
-    with pytest.raises(ValueError):
+    match = f"Plugin '{PLUGIN_NAME}' was selected"
+    with pytest.raises(ValueError, match=match):
         _npe2.read(["some.randomext"], stack=True, plugin=PLUGIN_NAME)
 
 

@@ -1,4 +1,4 @@
-from typing import Tuple, cast
+from typing import Tuple
 
 import numpy as np
 from pydantic import validator
@@ -27,23 +27,17 @@ class Plane(EventedModel):
     normal: Tuple[float, float, float] = (1, 0, 0)
     position: Tuple[float, float, float] = (0, 0, 0)
 
-    @validator('normal', allow_reuse=True)
+    @validator('normal')
     def _normalise_vector(cls, v):
         return tuple(v / np.linalg.norm(v))
 
-    @validator('normal', 'position', pre=True, allow_reuse=True)
+    @validator('normal', 'position', pre=True)
     def _ensure_tuple(cls, v):
         return tuple(v)
 
-    def shift_along_normal_vector(self, distance: float) -> None:
+    def shift_along_normal_vector(self, distance: float):
         """Shift the plane along its normal vector by a given distance."""
-        assert len(self.position) == len(self.normal) == 3
-        self.position = cast(
-            Tuple[float, float, float],
-            tuple(
-                p + (distance * n) for p, n in zip(self.position, self.normal)
-            ),
-        )
+        self.position += distance * self.normal
 
     def intersect_with_line(
         self, line_position: np.ndarray, line_direction: np.ndarray

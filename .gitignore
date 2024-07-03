@@ -1,4 +1,5 @@
 # Byte-compiled / optimized / DLL files
+docs/_tags/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -70,7 +71,6 @@ docs/source/api/
 docs/source/release/
 docs/source/releases.rst
 docs/build/
-docs/_tags
 
 # PyBuilder
 target/

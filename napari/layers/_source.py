@@ -39,7 +39,7 @@ class Source(BaseModel):
         arbitrary_types_allowed = True
         frozen = True
 
-    @validator('parent', allow_reuse=True)
+    @validator('parent')
     def make_weakref(cls, layer: Layer):
         return weakref.ref(layer)
 

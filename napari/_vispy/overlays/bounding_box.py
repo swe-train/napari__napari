@@ -1,5 +1,3 @@
-import numpy as np
-
 from napari._vispy.overlays.base import LayerOverlayMixin, VispySceneOverlay
 from napari._vispy.visuals.bounding_box import BoundingBox
 
@@ -23,32 +21,31 @@ class VispyBoundingBoxOverlay(LayerOverlayMixin, VispySceneOverlay):
         self.overlay.events.point_color.connect(self._on_point_color_change)
 
     def _on_bounds_change(self):
-        bounds = self.layer._display_bounding_box_augmented(
+        bounds = self.layer._display_bounding_box(
             self.layer._slice_input.displayed
         )
-        if len(bounds) == 2:
-            # 2d layers are assumed to be at 0 in the 3rd dimension
-            bounds = np.pad(bounds, ((1, 0), (0, 0)))
-        if self.layer._array_like and self.layer._slice_input.ndisplay == 2:
-            # array-like layers (images) are offset by 0.5 in 2d.
-            # This is not needed in 3D because vispy's VolumeVisual
-            # is already centered on voxels
-            bounds += 0.5
-
-        self.node.set_bounds(bounds[::-1])  # invert for vispy
+        # invert for vispy
+        self.node.set_bounds(bounds[::-1])
         self._on_lines_change()
 
     def _on_lines_change(self):
-        self.node.lines.visible = self.overlay.lines
+        if self.layer._slice_input.ndisplay == 2:
+            self.node.line2d.visible = self.overlay.lines
+            self.node.line3d.visible = False
+        else:
+            self.node.line3d.visible = self.overlay.lines
+            self.node.line2d.visible = False
 
     def _on_points_change(self):
         self.node.markers.visible = self.overlay.points
 
     def _on_line_thickness_change(self):
-        self.node.lines.set_data(width=self.overlay.line_thickness)
+        self.node.line2d.set_data(width=self.overlay.line_thickness)
+        self.node.line3d.set_data(width=self.overlay.line_thickness)
 
     def _on_line_color_change(self):
-        self.node.lines.set_data(color=self.overlay.line_color)
+        self.node.line2d.set_data(color=self.overlay.line_color)
+        self.node.line3d.set_data(color=self.overlay.line_color)
 
     def _on_point_size_change(self):
         self.node._marker_size = self.overlay.point_size

@@ -12,8 +12,6 @@ try:
 except ModuleNotFoundError:
     lxml_unavailable = True
 
-from napari.utils.io import imsave_png
-
 __all__ = ['nbscreenshot']
 
 
@@ -109,6 +107,8 @@ class NotebookScreenshot:
         -------
         In memory binary stream containing PNG screenshot image.
         """
+        from imageio import imsave
+
         from napari._qt.qt_event_loop import get_app
 
         get_app().processEvents()
@@ -116,7 +116,7 @@ class NotebookScreenshot:
             canvas_only=self.canvas_only, flash=False
         )
         with BytesIO() as file_obj:
-            imsave_png(file_obj, self.image)
+            imsave(file_obj, self.image, format='png')
             file_obj.seek(0)
             png = file_obj.read()
         return png

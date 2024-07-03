@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from app_model.types import KeyCode, KeyMod
-
 from napari.layers.points._points_constants import Mode
 from napari.layers.points.points import Points
 from napari.layers.utils.layer_utils import (
@@ -48,13 +46,13 @@ points_fun_to_mode = [
 ]
 
 
-@Points.bind_key(KeyMod.CtrlCmd | KeyCode.KeyC, overwrite=True)
+@Points.bind_key('Control-C')
 def copy(layer: Points):
     """Copy any selected points."""
     layer._copy_data()
 
 
-@Points.bind_key(KeyMod.CtrlCmd | KeyCode.KeyV, overwrite=True)
+@Points.bind_key('Control-V')
 def paste(layer: Points):
     """Paste any copied points."""
     layer._paste_data()

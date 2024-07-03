@@ -38,7 +38,7 @@ from contextlib import suppress
 from itertools import chain
 from multiprocessing.pool import ThreadPool
 from typing import TYPE_CHECKING
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 from weakref import WeakKeyDictionary
 
 with suppress(ModuleNotFoundError):
@@ -52,11 +52,31 @@ from packaging.version import parse as parse_version
 
 from napari.components import LayerList
 from napari.layers import Image, Labels, Points, Shapes, Vectors
+from napari.utils.config import async_loading
 from napari.utils.misc import ROOT_DIR
-from napari.viewer import Viewer
 
 if TYPE_CHECKING:
     from npe2._pytest_plugin import TestPluginManager
+
+
+def pytest_addoption(parser):
+    """Add napari specific command line options.
+
+    --aysnc_only
+        Run only asynchronous tests, not sync ones.
+
+    Notes
+    -----
+    Due to the placement of this conftest.py file, you must specifically name
+    the napari folder such as "pytest napari --aysnc_only"
+    """
+
+    parser.addoption(
+        "--async_only",
+        action="store_true",
+        default=False,
+        help="run only asynchronous tests",
+    )
 
 
 @pytest.fixture
@@ -159,6 +179,56 @@ def layers():
         Vectors(np.random.rand(10, 2, 2)),
     ]
     return LayerList(list_of_layers)
+
+
+# Currently we cannot run async and async in the invocation of pytest
+# because we get a segfault for unknown reasons. So for now:
+# "pytest" runs sync_only
+# "pytest napari --async_only" runs async only
+@pytest.fixture(scope="session", autouse=True)
+def configure_loading(request):
+    """Configure async/async loading."""
+    if request.config.getoption("--async_only"):
+        # Late import so we don't import experimental code unless using it.
+        from napari.components.experimental.chunk import synchronous_loading
+
+        with synchronous_loading(False):
+            yield
+    else:
+        yield  # Sync so do nothing.
+
+
+def _is_async_mode() -> bool:
+    """Return True if we are currently loading chunks asynchronously
+
+    Returns
+    -------
+    bool
+        True if we are currently loading chunks asynchronously.
+    """
+    if not async_loading:
+        return False  # Not enabled at all.
+
+    # Late import so we don't import experimental code unless using it.
+    from napari.components.experimental.chunk import chunk_loader
+
+    return not chunk_loader.force_synchronous
+
+
+@pytest.fixture(autouse=True)
+def skip_sync_only(request):
+    """Skip async_only tests if running async."""
+    sync_only = request.node.get_closest_marker('sync_only')
+    if _is_async_mode() and sync_only:
+        pytest.skip("running with --async_only")
+
+
+@pytest.fixture(autouse=True)
+def skip_async_only(request):
+    """Skip async_only tests if running sync."""
+    async_only = request.node.get_closest_marker('async_only')
+    if not _is_async_mode() and async_only:
+        pytest.skip("not running with --async_only")
 
 
 @pytest.fixture(autouse=True)
@@ -381,38 +451,6 @@ def single_threaded_executor():
     executor.shutdown()
 
 
-@pytest.fixture()
-def mock_console(request):
-    """Mock the qtconsole to avoid starting an interactive IPython session.
-    In-process IPython kernels can interfere with other tests and are difficult
-    (impossible?) to shutdown.
-
-    This fixture is configured to be applied automatically to tests unless they
-    use the `enable_console` marker. It's not autouse to avoid use on headless
-    tests (without Qt); instead it's enabled in `pytest_runtest_setup`.
-    """
-    if "enable_console" in request.keywords:
-        yield
-        return
-
-    from napari_console import QtConsole
-    from qtconsole.rich_jupyter_widget import RichJupyterWidget
-
-    class FakeQtConsole(RichJupyterWidget):
-        def __init__(self, viewer: Viewer):
-            super().__init__()
-            self.viewer = viewer
-            self.kernel_client = None
-            self.kernel_manager = None
-
-        _update_theme = Mock()
-        push = Mock()
-        closeEvent = QtConsole.closeEvent
-
-    with patch("napari_console.QtConsole", FakeQtConsole):
-        yield
-
-
 @pytest.fixture(autouse=True)
 def _mock_app():
     """Mock clean 'test_app' `NapariApplication` instance.
@@ -544,8 +582,6 @@ def dangling_qthread_pool(monkeypatch, request):
     dangling_threads_pools = []
 
     for thread_pool, calling in threadpool_dict.items():
-        thread_pool.clear()
-        thread_pool.waitForDone(20)
         if thread_pool.activeThreadCount():
             dangling_threads_pools.append((thread_pool, calling))
 
@@ -749,6 +785,5 @@ def pytest_runtest_setup(item):
                 "dangling_qanimations",
                 "dangling_qthreads",
                 "dangling_qtimers",
-                "mock_console",
             ]
         )

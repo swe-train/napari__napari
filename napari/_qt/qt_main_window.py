@@ -125,8 +125,6 @@ class _QtMainWindow(QMainWindow):
         self.setWindowTitle(self._qt_viewer.viewer.title)
 
         self._maximized_flag = False
-        self._fullscreen_flag = False
-        self._normal_geometry = QRect()
         self._window_size = None
         self._window_pos = None
         self._old_size = None
@@ -165,7 +163,9 @@ class _QtMainWindow(QMainWindow):
         # we need to manually connect them again.
         handle = self.windowHandle()
         if handle is not None:
-            handle.screenChanged.connect(self._qt_viewer.canvas.screen_changed)
+            handle.screenChanged.connect(
+                self._qt_viewer.canvas._backend.screen_changed
+            )
 
         # this is the line that initializes any Qt-based app-model Actions that
         # were defined somewhere in the `_qt` module and imported in init_qactions
@@ -221,62 +221,7 @@ class _QtMainWindow(QMainWindow):
             with contextlib.suppress(ValueError):
                 inst = _QtMainWindow._instances
                 inst.append(inst.pop(inst.index(self)))
-
         return super().event(e)
-
-    def isFullScreen(self):
-        # Needed to prevent errors when going to fullscreen mode on Windows
-        # Use a flag attribute to determine if the window is in full screen mode
-        # See https://bugreports.qt.io/browse/QTBUG-41309
-        # Based on https://github.com/spyder-ide/spyder/pull/7720
-        return self._fullscreen_flag
-
-    def showNormal(self):
-        # Needed to prevent errors when going to fullscreen mode on Windows. Here we:
-        #   * Set fullscreen flag
-        #   * Remove `Qt.FramelessWindowHint` and `Qt.WindowStaysOnTopHint` window flags if needed
-        #   * Set geometry to previously stored normal geometry or default empty QRect
-        # Always call super `showNormal` to set Qt window state
-        # See https://bugreports.qt.io/browse/QTBUG-41309
-        # Based on https://github.com/spyder-ide/spyder/pull/7720
-        self._fullscreen_flag = False
-        if os.name == 'nt':
-            self.setWindowFlags(
-                self.windowFlags()
-                ^ (Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
-            )
-            self.setGeometry(self._normal_geometry)
-        super().showNormal()
-
-    def showFullScreen(self):
-        # Needed to prevent errors when going to fullscreen mode on Windows. Here we:
-        #   * Set fullscreen flag
-        #   * Add `Qt.FramelessWindowHint` and `Qt.WindowStaysOnTopHint` window flags if needed
-        #   * Call super `showNormal` to update the normal screen geometry to apply it later if needed
-        #   * Save window normal geometry if needed
-        #   * Get screen geometry
-        #   * Set geometry window to use total screen geometry +1 in every direction if needed
-        # If the workaround is not needed just call super `showFullScreen`
-        # See https://bugreports.qt.io/browse/QTBUG-41309
-        # Based on https://github.com/spyder-ide/spyder/pull/7720
-        self._fullscreen_flag = True
-        if os.name == 'nt':
-            self.setWindowFlags(
-                self.windowFlags()
-                | Qt.FramelessWindowHint
-                | Qt.WindowStaysOnTopHint
-            )
-            super().showNormal()
-            self._normal_geometry = self.normalGeometry()
-            screen_rect = self.windowHandle().screen().geometry()
-            self.setGeometry(
-                screen_rect.left() - 1,
-                screen_rect.top() - 1,
-                screen_rect.width() + 2,
-                screen_rect.height() + 2,
-            )
-        else:
-            super().showFullScreen()
 
     def eventFilter(self, source, event):
         # Handle showing hidden menubar on mouse move event.
@@ -384,8 +329,8 @@ class _QtMainWindow(QMainWindow):
             self._qt_viewer.dockConsole.setVisible(False)
 
         if window_fullscreen:
+            self.setWindowState(Qt.WindowState.WindowFullScreen)
             self._maximized_flag = window_maximized
-            self.showFullScreen()
         elif window_maximized:
             self.setWindowState(Qt.WindowState.WindowMaximized)
 
@@ -1375,7 +1320,7 @@ class Window:
             Flag to indicate whether flash animation should be shown after
             the screenshot was captured.
         size : tuple (int, int)
-            Size (resolution height x width) of the screenshot. By default, the currently displayed size.
+            Size (resolution) of the screenshot. By default, the currently displayed size.
             Only used if `canvas_only` is True.
         scale : float
             Scale factor used to increase resolution of canvas for the screenshot. By default, the currently displayed resolution.
@@ -1407,12 +1352,12 @@ class Window:
                     int(dim / self._qt_window.devicePixelRatio())
                     for dim in size
                 )
-                canvas.size = size
+                canvas.size = size[::-1]  # invert x ad y for vispy
             if scale is not None:
                 # multiply canvas dimensions by the scale factor to get new size
                 canvas.size = tuple(int(dim * scale) for dim in canvas.size)
             try:
-                img = canvas.screenshot()
+                img = self._qt_viewer.canvas.native.grabFramebuffer()
                 if flash:
                     add_flash_animation(self._qt_viewer._welcome_widget)
             finally:
@@ -1454,10 +1399,9 @@ class Window:
             Numpy array of type ubyte and shape (h, w, 4). Index [0, 0] is the
             upper-left corner of the rendered region.
         """
-
         img = QImg2array(self._screenshot(size, scale, flash, canvas_only))
         if path is not None:
-            imsave(path, img)
+            imsave(path, img)  # scikit-image imsave method
         return img
 
     def clipboard(self, flash=True, canvas_only=False):

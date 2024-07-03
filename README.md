@@ -19,8 +19,6 @@
 
 We're developing **napari** in the open! But the project is in an **alpha** stage, and there will still likely be **breaking changes** with each release. You can follow progress on [this repository](https://github.com/napari/napari), test out new versions as we release them, and contribute ideas and code.
 
-If you want to refer to our documentation, please go to [napari.org](https://www.napari.org). If you want to contribute to it, please refer to the *contributing* section below. 
-
 We're working on [tutorials](https://napari.org/tutorials/), but you can also quickly get started by looking below.
 
 ## installation
@@ -86,9 +84,7 @@ You can see details of [the project roadmap here](https://napari.org/roadmaps/in
 
 ## contributing
 
-Contributions are encouraged! Please read our [contributing guide](https://napari.org/developers/contributing.html) to get started. Given that we're in an early stage, you may want to reach out on our [Github Issues](https://github.com/napari/napari/issues) before jumping in. 
-
-If you want to contribute or edit to our documentation, please go to [napari/docs](https://github.com/napari/docs). 
+Contributions are encouraged! Please read our [contributing guide](https://napari.org/developers/contributing.html) to get started. Given that we're in an early stage, you may want to reach out on our [Github Issues](https://github.com/napari/napari/issues) before jumping in.
 
 ## code of conduct
 
@@ -116,7 +112,4 @@ the bug report template. If you think something isn't working, don't hesitate to
 
 ## institutional and funding partners
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://chanzuckerberg.com/wp-content/themes/czi/img/logo-white.svg">
-  <img alt="CZI logo" src="https://chanzuckerberg.com/wp-content/themes/czi/img/logo.svg">
-</picture>
+![Chan Zuckerberg Initiative logo](https://chanzuckerberg.com/wp-content/themes/czi/img/logo.svg)

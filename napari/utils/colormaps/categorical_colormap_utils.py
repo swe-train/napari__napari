@@ -72,10 +72,8 @@ def _coerce_colorcycle_from_dict(
             elem_name='color_cycle',
             default="white",
         )[0]
-    elif isinstance(color_cycle, cycle):
-        transformed_color_cycle = color_cycle
     else:
-        raise TypeError(f"cycle entry must be type(cycle), got {type(cycle)}")
+        transformed_color_cycle = color_cycle
 
     return ColorCycle(
         values=transformed_color_values, cycle=transformed_color_cycle

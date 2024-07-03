@@ -17,10 +17,11 @@ representations, warn the users of their misbehaving and return a default
 white color array, since it seems unreasonable to crash the entire napari
 session due to mis-represented colors.
 """
+
 import functools
 import types
 import warnings
-from typing import Any, Callable, Dict, Optional, Sequence, Union
+from typing import Any, Callable, Dict, Sequence
 
 import numpy as np
 from vispy.color import ColorArray, get_color_dict, get_color_names
@@ -61,10 +62,7 @@ def transform_color(colors: Any) -> np.ndarray:
         invalid inputs
     """
     colortype = type(colors)
-    for typ, handler in _color_switch.items():
-        if issubclass(colortype, typ):
-            return handler(colors)
-    raise ValueError(f"cannot convert type '{colortype}' to a color array.")
+    return _color_switch[colortype](colors)
 
 
 @functools.lru_cache(maxsize=1024)
@@ -100,7 +98,7 @@ def _handle_str(color: str) -> np.ndarray:
     return colorarray
 
 
-def _handle_list_like(colors: Sequence) -> Optional[np.ndarray]:
+def _handle_list_like(colors: Sequence) -> np.ndarray:
     """Parse a list-like container of colors into a numpy Nx4 array.
 
     Handles all list-like containers of colors using recursion (if necessary).
@@ -151,7 +149,7 @@ def _handle_list_like(colors: Sequence) -> Optional[np.ndarray]:
     return None
 
 
-def _handle_generator(colors) -> Optional[np.ndarray]:
+def _handle_generator(colors) -> np.ndarray:
     """Generators are converted to lists since we need to know their
     length to instantiate a proper array.
     """
@@ -305,7 +303,7 @@ def _convert_array_to_correct_format(colors: np.ndarray) -> np.ndarray:
     return np.atleast_2d(np.asarray(colors, dtype=np.float32))
 
 
-def _handle_str_list_like(colors: Union[Sequence, np.ndarray]) -> np.ndarray:
+def _handle_str_list_like(colors: Sequence) -> np.ndarray:
     """Converts lists or arrays filled with strings to the proper color array
     format.
 

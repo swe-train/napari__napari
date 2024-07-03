@@ -8,6 +8,7 @@ from main napari window.
 .. tags::  gui, interactivity
 """
 
+
 from magicgui import magicgui
 from qtpy.QtWidgets import (
     QDialog,
