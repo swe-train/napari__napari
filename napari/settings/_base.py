@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 import logging
 import os
 from collections.abc import Mapping
@@ -9,28 +8,23 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple, cast
 from warnings import warn
 
-from napari._pydantic_compat import (
-    BaseModel,
-    BaseSettings,
-    SettingsError,
-    ValidationError,
-    display_errors,
-)
-from napari.settings._yaml import PydanticYamlMixin
-from napari.utils.events import EmitterGroup, EventedModel
-from napari.utils.misc import deep_update
-from napari.utils.translations import trans
+from pydantic import BaseModel, BaseSettings, ValidationError
+from pydantic.env_settings import SettingsError
+from pydantic.error_wrappers import display_errors
+
+from ..utils.events import EmitterGroup, EventedModel
+from ..utils.misc import deep_update
+from ..utils.translations import trans
+from ._yaml import PydanticYamlMixin
 
 _logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from typing import AbstractSet, Any, Union
 
-    from napari._pydantic_compat import (
-        EnvSettingsSource,
-        SettingsSourceCallable,
-    )
-    from napari.utils.events import Event
+    from pydantic.env_settings import EnvSettingsSource, SettingsSourceCallable
+
+    from ..utils.events import Event
 
     IntStr = Union[int, str]
     AbstractSetIntStr = AbstractSet[IntStr]
@@ -38,7 +32,7 @@ if TYPE_CHECKING:
     MappingIntStrAny = Mapping[IntStr, Any]
 
 
-class EventedSettings(BaseSettings, EventedModel):
+class EventedSettings(BaseSettings, EventedModel):  # type: ignore[misc]
     """A variant of EventedModel designed for settings.
 
     Pydantic's BaseSettings model will attempt to determine the values of any
@@ -108,20 +102,17 @@ class EventedConfigFileSettings(EventedSettings, PydanticYamlMixin):
         super().__init__(**values)
         self._config_path = _cfg
 
-    def _maybe_save(self):
-        if self._save_on_change and self.config_path:
-            self.save()
-
     def _on_sub_event(self, event, field=None):
         super()._on_sub_event(event, field)
-        self._maybe_save()
+        if self._save_on_change and self.config_path:
+            self.save()
 
     @property
     def config_path(self):
         """Return the path to/from which settings be saved/loaded."""
         return self._config_path
 
-    def dict(
+    def dict(  # type: ignore [override]
         self,
         *,
         include: Union[AbstractSetIntStr, MappingIntStrAny] = None,  # type: ignore
@@ -246,7 +237,7 @@ class EventedConfigFileSettings(EventedSettings, PydanticYamlMixin):
             the return list to change the priority of sources.
             """
             cls._env_settings = nested_env_settings(env_settings)
-            return (
+            return (  # type: ignore [return-value]
                 init_settings,
                 cls._env_settings,
                 cls._config_file_settings_source,
@@ -320,11 +311,7 @@ def nested_env_settings(
                         env_val = settings.__config__.json_loads(env_val)
                     except ValueError as e:
                         if not all_json_fail:
-                            msg = trans._(
-                                'error parsing JSON for "{env_name}"',
-                                deferred=True,
-                                env_name=env_name,
-                            )
+                            msg = f'error parsing JSON for "{env_name}"'
                             raise SettingsError(msg) from e
 
                     if isinstance(env_val, dict):
@@ -369,7 +356,7 @@ def config_file_settings_source(
     default_cfg = getattr(default_cfg, 'default', None)
 
     # if the config has a `sources` list, read those too and merge.
-    sources: List[str] = list(getattr(settings.__config__, 'sources', []))
+    sources = list(getattr(settings.__config__, 'sources', []))
     if config_path:
         sources.append(config_path)
     if not sources:
@@ -379,17 +366,17 @@ def config_file_settings_source(
     for path in sources:
         if not path:
             continue  # pragma: no cover
-        path_ = Path(path).expanduser().resolve()
+        _path = Path(path).expanduser().resolve()
 
         # if the requested config path does not exist, move on to the next
-        if not path_.is_file():
+        if not _path.is_file():
             # if it wasn't the `_config_path` stated in the BaseModel itself,
             # we warn, since this would have been user provided.
-            if path_ != default_cfg:
+            if _path != default_cfg:
                 _logger.warning(
                     trans._(
                         "Requested config path is not a file: {path}",
-                        path=path_,
+                        path=_path,
                     )
                 )
             continue
@@ -410,8 +397,8 @@ def config_file_settings_source(
 
         try:
             # try to parse the config file into a dict
-            new_data = load(path_.read_text()) or {}
-        except Exception as err:  # noqa: BLE001
+            new_data = load(_path.read_text()) or {}
+        except Exception as err:
             _logger.warning(
                 trans._(
                     "The content of the napari settings file could not be read\n\nThe default settings will be used and the content of the file will be replaced the next time settings are changed.\n\nError:\n{err}",
@@ -420,7 +407,7 @@ def config_file_settings_source(
                 )
             )
             continue
-        assert isinstance(new_data, dict), path_.read_text()
+        assert isinstance(new_data, dict), _path.read_text()
         deep_update(data, new_data, copy=False)
 
     try:
@@ -438,10 +425,12 @@ def config_file_settings_source(
             deferred=True,
             errors=display_errors(errors),
         )
-        with contextlib.suppress(Exception):
+        try:
             # we're about to nuke some settings, so just in case... try backup
-            backup_path = path_.parent / f'{path_.stem}.BAK{path_.suffix}'
-            backup_path.write_text(path_.read_text())
+            backup_path = _path.parent / f'{_path.stem}.BAK{_path.suffix}'
+            backup_path.write_text(_path.read_text())
+        except Exception:
+            pass
 
         _logger.warning(msg)
         try:

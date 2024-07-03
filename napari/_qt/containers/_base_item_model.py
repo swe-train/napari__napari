@@ -5,14 +5,12 @@ from typing import TYPE_CHECKING, Any, Generic, Tuple, TypeVar, Union
 
 from qtpy.QtCore import QAbstractItemModel, QModelIndex, Qt
 
-from napari.utils.events import disconnect_events
-from napari.utils.events.containers import SelectableEventedList
-from napari.utils.translations import trans
+from ...utils.events import disconnect_events
+from ...utils.events.containers import SelectableEventedList
+from ...utils.translations import trans
 
 if TYPE_CHECKING:
-    from typing import Optional
-
-    from qtpy.QtWidgets import QWidget  # type: ignore[attr-defined]
+    from qtpy.QtWidgets import QWidget
 
 
 ItemType = TypeVar("ItemType")
@@ -77,10 +75,8 @@ class _BaseEventedItemModel(QAbstractItemModel, Generic[ItemType]):
     # ########## Reimplemented Public Qt Functions ##################
 
     def __init__(
-        self,
-        root: SelectableEventedList[ItemType],
-        parent: Optional[QWidget] = None,
-    ) -> None:
+        self, root: SelectableEventedList[ItemType], parent: QWidget = None
+    ):
         super().__init__(parent=parent)
         self.setRoot(root)
 
@@ -136,21 +132,19 @@ class _BaseEventedItemModel(QAbstractItemModel, Generic[ItemType]):
         """
         return 1
 
-    def rowCount(self, parent: Optional[QModelIndex] = None) -> int:
+    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
         """Returns the number of rows under the given parent.
 
         When the parent is valid it means that rowCount is returning the number
         of children of parent.
         """
-        if parent is None:
-            parent = QModelIndex()
         try:
             return len(self.getItem(parent))
         except TypeError:
             return 0
 
     def index(
-        self, row: int, column: int = 0, parent: Optional[QModelIndex] = None
+        self, row: int, column: int = 0, parent: QModelIndex = QModelIndex()
     ) -> QModelIndex:
         """Return a QModelIndex for item at `row`, `column` and `parent`."""
 
@@ -175,9 +169,6 @@ class _BaseEventedItemModel(QAbstractItemModel, Generic[ItemType]):
         #
         # Unfortunately, all of those come at a cost... as this is a very
         # frequently called function :/
-
-        if parent is None:
-            parent = QModelIndex()
 
         return (
             self.createIndex(row, column, self.getItem(parent)[row])

@@ -15,8 +15,6 @@ If octree support is *not* enabled, napari will try to load the entire image,
 which may not fit in memory and may bring your computer to a halt. Oops! So, we
 make sure that we enable octree support by setting the NAPARI_OCTREE
 environment variable to 1 if it is not set by the user.
-
-.. tags:: experimental
 """
 
 import os
@@ -24,9 +22,9 @@ import os
 # important: if this is not set, the entire ~4GB array will be created!
 os.environ.setdefault('NAPARI_OCTREE', '1')
 
-import dask.array as da  # noqa: E402
+import dask.array as da
+import napari
 
-import napari  # noqa: E402
 
 ndim = 2
 data = da.random.randint(

@@ -5,15 +5,13 @@ from typing import TYPE_CHECKING, TypeVar
 
 from qtpy.QtWidgets import QTreeView
 
-from napari._qt.containers._base_item_view import _BaseEventedItemView
-from napari._qt.containers.qt_tree_model import QtNodeTreeModel
-from napari.utils.tree import Group, Node
+from ...utils.tree import Group, Node
+from ._base_item_view import _BaseEventedItemView
+from .qt_tree_model import QtNodeTreeModel
 
 if TYPE_CHECKING:
-    from typing import Optional
-
     from qtpy.QtCore import QModelIndex
-    from qtpy.QtWidgets import QWidget  # type: ignore[attr-defined]
+    from qtpy.QtWidgets import QWidget
 
 
 NodeType = TypeVar("NodeType", bound=Node)
@@ -36,9 +34,7 @@ class QtNodeTreeView(_BaseEventedItemView[NodeType], QTreeView):
 
     _root: Group[Node]
 
-    def __init__(
-        self, root: Group[Node], parent: Optional[QWidget] = None
-    ) -> None:
+    def __init__(self, root: Group[Node], parent: QWidget = None):
         super().__init__(parent)
         self.setHeaderHidden(True)
         self.setDragDropMode(QTreeView.InternalMove)

@@ -1,14 +1,12 @@
 import os
 import sys
 from collections import abc
-from contextlib import suppress
-from threading import RLock
-from typing import Any, Dict, Tuple, Union
+from contextlib import contextmanager
+from typing import Any, Dict
 
 import numpy as np
 import pandas as pd
 import pytest
-from numpy.typing import DTypeLike
 
 from napari import Viewer
 from napari.layers import (
@@ -20,8 +18,7 @@ from napari.layers import (
     Tracks,
     Vectors,
 )
-from napari.layers._data_protocols import Index, LayerDataProtocol
-from napari.utils.color import ColorArray
+from napari.settings import get_settings
 
 skip_on_win_ci = pytest.mark.skipif(
     sys.platform.startswith('win') and os.getenv('CI', '0') != '0',
@@ -33,12 +30,6 @@ skip_local_popups = pytest.mark.skipif(
     reason='Tests requiring GUI windows are skipped locally by default.'
     ' Set NAPARI_POPUP_TESTS=1 environment variable to enable.',
 )
-
-"""
-The default timeout duration in seconds when waiting on tasks running in non-main threads.
-The value was chosen to be consistent with `QtBot.waitSignal` and `QtBot.waitUntil`.
-"""
-DEFAULT_TIMEOUT_SECS: float = 5
 
 
 """
@@ -87,12 +78,14 @@ layer_test_data = [
     ),
 ]
 
-with suppress(ModuleNotFoundError):
+try:
     import tensorstore as ts
 
     m = ts.array(np.random.random((10, 15)))
     p = [ts.array(np.random.random(s)) for s in [(40, 20), (20, 10), (10, 5)]]
     layer_test_data.extend([(Image, m, 2), (Image, p, 2)])
+except ImportError:
+    pass
 
 classes = [Labels, Points, Vectors, Shapes, Surface, Tracks, Image]
 names = [cls.__name__.lower() for cls in classes]
@@ -105,7 +98,7 @@ layer2addmethod = {
 good_layer_data = [
     (np.random.random((10, 10)),),
     (np.random.random((10, 10, 3)), {'rgb': True}),
-    (np.random.randint(20, size=(10, 15)), {'seed_rng': 5}, 'labels'),
+    (np.random.randint(20, size=(10, 15)), {'seed': 0.3}, 'labels'),
     (np.random.random((10, 2)) * 20, {'face_color': 'blue'}, 'points'),
     (np.random.random((10, 2, 2)) * 20, {}, 'vectors'),
     (np.random.random((10, 4, 2)) * 20, {'opacity': 1}, 'shapes'),
@@ -119,40 +112,6 @@ good_layer_data = [
         'surface',
     ),
 ]
-
-
-class LockableData:
-    """A wrapper for napari layer data that blocks read-access with a lock.
-
-    This is useful when testing async slicing with real napari layers because
-    it allows us to control when slicing tasks complete.
-    """
-
-    def __init__(self, data: LayerDataProtocol) -> None:
-        self.data = data
-        self.lock = RLock()
-
-    @property
-    def dtype(self) -> DTypeLike:
-        return self.data.dtype
-
-    @property
-    def shape(self) -> Tuple[int, ...]:
-        return self.data.shape
-
-    @property
-    def ndim(self) -> int:
-        # LayerDataProtocol does not have ndim, but this should be equivalent.
-        return len(self.data.shape)
-
-    def __getitem__(
-        self, key: Union[Index, Tuple[Index, ...], LayerDataProtocol]
-    ) -> LayerDataProtocol:
-        with self.lock:
-            return self.data[key]
-
-    def __len__(self) -> int:
-        return len(self.data)
 
 
 def add_layer_by_type(viewer, layer_type, data, visible=True):
@@ -181,6 +140,10 @@ def are_objects_equal(object1, object2):
         items = [(object1, object2)]
 
     # equal_nan does not exist in array_equal in old numpy
+    if tuple(int(v) for v in np.__version__.split('.')) < (1, 19):
+        fixed = [(np.nan_to_num(a1), np.nan_to_num(a2)) for a1, a2 in items]
+        return np.all([np.all(a1 == a2) for a1, a2 in fixed])
+
     try:
         return np.all(
             [np.array_equal(a1, a2, equal_nan=True) for a1, a2 in items]
@@ -236,10 +199,10 @@ def check_view_transform_consistency(layer, viewer, transf_dict):
         corresponding to the array of property values
     """
     if layer.multiscale:
-        return
+        return None
 
     # Get an handle on visual layer:
-    vis_lyr = viewer.window._qt_viewer.canvas.layer_to_visual[layer]
+    vis_lyr = viewer.window._qt_viewer.layer_to_visual[layer]
     # Visual layer attributes should match expected from viewer dims:
     for transf_name, transf in transf_dict.items():
         disp_dims = list(viewer.dims.displayed)  # dimensions displayed in 2D
@@ -249,7 +212,9 @@ def check_view_transform_consistency(layer, viewer, transf_dict):
         np.testing.assert_almost_equal(vis_vals, transf[disp_dims])
 
 
-def check_layer_world_data_extent(layer, extent, scale, translate):
+def check_layer_world_data_extent(
+    layer, extent, scale, translate, pixels=False
+):
     """Test extents after applying transforms.
 
     Parameters
@@ -264,11 +229,12 @@ def check_layer_world_data_extent(layer, extent, scale, translate):
         Translation to be applied to layer.
     """
     np.testing.assert_almost_equal(layer.extent.data, extent)
-    np.testing.assert_almost_equal(layer.extent.world, extent)
+    world_extent = extent - 0.5 if pixels else extent
+    np.testing.assert_almost_equal(layer.extent.world, world_extent)
 
     # Apply scale transformation
     layer.scale = scale
-    scaled_world_extent = np.multiply(extent, scale)
+    scaled_world_extent = np.multiply(world_extent, scale)
     np.testing.assert_almost_equal(layer.extent.data, extent)
     np.testing.assert_almost_equal(layer.extent.world, scaled_world_extent)
 
@@ -297,21 +263,9 @@ def assert_layer_state_equal(
             np.testing.assert_equal(actual_value, expected_value)
 
 
-def assert_colors_equal(actual, expected):
-    """Asserts that a sequence of colors is equal to an expected one.
-
-    This converts elements in the given sequences from color values
-    recognized by ``transform_color`` to the canonical RGBA array form.
-
-    Examples
-    --------
-    >>> assert_colors_equal([[1, 0, 0, 1], [0, 0, 1, 1]], ['red', 'blue'])
-
-    >>> assert_colors_equal([[1, 0, 0, 1], [0, 0, 1, 1]], ['red', 'green'])
-    Traceback (most recent call last):
-    AssertionError:
-    ...
-    """
-    actual_array = ColorArray.validate(actual)
-    expected_array = ColorArray.validate(expected)
-    np.testing.assert_array_equal(actual_array, expected_array)
+@contextmanager
+def restore_settings_on_exit():
+    """Context manager restores settings on exit"""
+    original_settings = get_settings().plugins.extension2reader
+    yield
+    get_settings().plugins.extension2reader = original_settings

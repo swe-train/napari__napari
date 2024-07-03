@@ -2,37 +2,14 @@
 """
 import os
 import threading
-from typing import NamedTuple, Optional
+from collections import namedtuple
+from typing import Optional
 
+# The span of time that the event ocurred.
+Span = namedtuple("Span", "start_ns end_ns")
 
-class Span(NamedTuple):
-    """The span of time that the event ocurred.
-
-    Parameters
-    ----------
-    start_ns : int
-        Start time in nanoseconds.
-    end_ns : int
-        End time in nanoseconds.
-    """
-
-    start_ns: int
-    end_ns: int
-
-
-class Origin(NamedTuple):
-    """What process/thread produced the event.
-
-    Parameters
-    ----------
-    process_id : int
-        The process id that produced the event.
-    thread_id : int
-        The thread id that produced the event.
-    """
-
-    process_id: int
-    thread_id: int
+# What process/thread produced the event.
+Origin = namedtuple("Origin", "process_id thread_id")
 
 
 class PerfEvent:
@@ -91,11 +68,11 @@ class PerfEvent:
         start_ns: int,
         end_ns: int,
         category: Optional[str] = None,
-        process_id: Optional[int] = None,
-        thread_id: Optional[int] = None,
+        process_id: int = None,
+        thread_id: int = None,
         phase: str = "X",  # "X" is a "complete event" in their spec.
-        **kwargs: float,
-    ) -> None:
+        **kwargs: dict,
+    ):
         if process_id is None:
             process_id = os.getpid()
         if thread_id is None:
@@ -103,7 +80,7 @@ class PerfEvent:
 
         self.name: str = name
         self.span: Span = Span(start_ns, end_ns)
-        self.category: Optional[str] = category
+        self.category: str = category
         self.origin: Origin = Origin(process_id, thread_id)
         self.args = kwargs
         self.phase: str = phase

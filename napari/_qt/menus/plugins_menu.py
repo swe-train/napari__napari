@@ -1,29 +1,24 @@
 from itertools import chain
-from logging import getLogger
-from typing import TYPE_CHECKING, Sequence, Union
+from typing import TYPE_CHECKING, Sequence
 
 from qtpy.QtWidgets import QAction
 
-from napari._qt.dialogs.qt_plugin_report import QtPluginErrReporter
-from napari._qt.menus._util import NapariMenu
-from napari.plugins import _npe2
-from napari.utils.translations import trans
+from ...plugins import _npe2
+from ...utils.translations import trans
+from ..dialogs.qt_plugin_dialog import QtPluginDialog
+from ..dialogs.qt_plugin_report import QtPluginErrReporter
+from ._util import NapariMenu
 
 if TYPE_CHECKING:
-    from napari._qt.qt_main_window import Window
-
-
-logger = getLogger(__name__)
+    from ..qt_main_window import Window
 
 
 class PluginsMenu(NapariMenu):
-    def __init__(self, window: 'Window') -> None:
+    def __init__(self, window: 'Window'):
         self._win = window
         super().__init__(trans._('&Plugins'), window._qt_window)
 
-        from napari.plugins import plugin_manager
-
-        _npe2.index_npe1_adapters()
+        from ...plugins import plugin_manager
 
         plugin_manager.discover_widgets()
         plugin_manager.events.disabled.connect(
@@ -37,9 +32,8 @@ class PluginsMenu(NapariMenu):
 
     def _build(self, event=None):
         self.clear()
-        if self._plugin_manager_dialog_cls() is not None:
-            action = self.addAction(trans._("Plugin Manager"))
-            action.triggered.connect(self._show_plugin_install_dialog)
+        action = self.addAction(trans._("Install/Uninstall Plugins..."))
+        action.triggered.connect(self._show_plugin_install_dialog)
         action = self.addAction(trans._("Plugin Errors..."))
         action.setStatusTip(
             trans._(
@@ -53,13 +47,14 @@ class PluginsMenu(NapariMenu):
         self._add_registered_widget(call_all=True)
 
     def _remove_unregistered_widget(self, event):
-        for action in self.actions():
+
+        for idx, action in enumerate(self.actions()):
             if event.value in action.text():
                 self.removeAction(action)
                 self._win._remove_dock_widget(event=event)
 
     def _add_registered_widget(self, event=None, call_all=False):
-        from napari.plugins import plugin_manager
+        from ...plugins import plugin_manager
 
         # eg ('dock', ('my_plugin', {'My widget': MyWidget}))
         for hook_type, (plugin_name, widgets) in chain(
@@ -71,18 +66,11 @@ class PluginsMenu(NapariMenu):
     def _add_plugin_actions(
         self, hook_type: str, plugin_name: str, widgets: Sequence[str]
     ):
-        from napari.plugins import menu_item_template
+        from ...plugins import menu_item_template
 
         multiprovider = len(widgets) > 1
         if multiprovider:
-            # use display_name if npe2 plugin
-            from npe2 import plugin_manager as pm
-
-            try:
-                plugin_display_name = pm.get_manifest(plugin_name).display_name
-            except KeyError:
-                plugin_display_name = plugin_name
-            menu = NapariMenu(plugin_display_name, self)
+            menu = NapariMenu(plugin_name, self)
             self.addMenu(menu)
         else:
             menu = self
@@ -97,7 +85,7 @@ class PluginsMenu(NapariMenu):
 
             def _add_toggle_widget(*, key=key, hook_type=hook_type):
                 full_name = menu_item_template.format(*key)
-                if full_name in self._win._dock_widgets:
+                if full_name in self._win._dock_widgets.keys():
                     dock_widget = self._win._dock_widgets[full_name]
                     if dock_widget.isVisible():
                         dock_widget.hide()
@@ -117,22 +105,9 @@ class PluginsMenu(NapariMenu):
                 menu.addAction(action)
             action.triggered.connect(_add_toggle_widget)
 
-    def _plugin_manager_dialog_cls(self) -> Union[type, None]:
-        """Return the plugin manager class, if available."""
-        try:
-            # TODO: Register via plugin system?
-            from napari_plugin_manager.qt_plugin_dialog import QtPluginDialog
-        except ImportError as exc:
-            logger.debug("QtPluginDialog not available", exc_info=exc)
-            return None
-        else:
-            return QtPluginDialog
-
     def _show_plugin_install_dialog(self):
         """Show dialog that allows users to sort the call order of plugins."""
-        # We don't check whether the class is not None, because this
-        # function should only be connected in that case.
-        self._plugin_manager_dialog_cls()(self._win._qt_window).exec_()
+        QtPluginDialog(self._win._qt_window).exec_()
 
     def _show_plugin_err_reporter(self):
         """Show dialog that allows users to review and report plugin errors."""

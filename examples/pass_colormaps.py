@@ -4,13 +4,12 @@ Pass colormaps
 
 Add named or unnamed vispy colormaps to existing layers.
 
-.. tags:: visualization-basic
 """
 
 import numpy as np
 from skimage import data
-
 import napari
+
 
 histo = data.astronaut() / 255
 rch, gch, bch = np.transpose(histo, (2, 0, 1))

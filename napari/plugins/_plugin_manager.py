@@ -1,4 +1,5 @@
-import contextlib
+import importlib.util
+import sys
 import warnings
 from functools import partial
 from pathlib import Path
@@ -17,21 +18,20 @@ from typing import (
 )
 from warnings import warn
 
-from napari_plugin_engine import (
-    HookImplementation,
-    PluginManager as PluginManager,
-)
+from napari_plugin_engine import HookImplementation
+from napari_plugin_engine import PluginManager as PluginManager
 from napari_plugin_engine.hooks import HookCaller
+from pydantic import ValidationError
 from typing_extensions import TypedDict
 
-from napari._pydantic_compat import ValidationError
-from napari.plugins import hook_specifications
-from napari.settings import get_settings
-from napari.types import AugmentedWidget, LayerData, SampleDict, WidgetCallable
-from napari.utils.events import EmitterGroup, EventedSet
-from napari.utils.misc import camel_to_spaces
-from napari.utils.theme import Theme, register_theme, unregister_theme
-from napari.utils.translations import trans
+from ..settings import get_settings
+from ..types import AugmentedWidget, LayerData, SampleDict, WidgetCallable
+from ..utils._appdirs import user_site_packages
+from ..utils.events import EmitterGroup, EventedSet
+from ..utils.misc import camel_to_spaces, running_as_bundled_app
+from ..utils.theme import Theme, register_theme, unregister_theme
+from ..utils.translations import trans
+from . import _builtins, hook_specifications
 
 
 class PluginHookOption(TypedDict):
@@ -64,7 +64,7 @@ class NapariPluginManager(PluginManager):
 
     ENTRY_POINT = 'napari.plugin'
 
-    def __init__(self) -> None:
+    def __init__(self):
         super().__init__('napari', discover_entry_point=self.ENTRY_POINT)
 
         self.events = EmitterGroup(
@@ -93,16 +93,20 @@ class NapariPluginManager(PluginManager):
             str, Dict[str, Tuple[WidgetCallable, Dict[str, Any]]]
         ] = {}
         self._function_widgets: Dict[str, Dict[str, Callable[..., Any]]] = {}
-        self._theme_data: Dict[str, Dict[str, Theme]] = {}
+        self._theme_data: Dict[str, Dict[str, Theme]] = dict()
 
-        # appmodel sample menu actions/submenu unregister functions used in
-        # `napari.plugins._npe2._build_npe1_samples_menu`
-        self._unreg_sample_submenus = None
-        self._unreg_sample_actions = None
+        if sys.platform.startswith('linux') and running_as_bundled_app():
+            sys.path.append(user_site_packages())
 
     def _initialize(self):
         with self.discovery_blocked():
-            from napari.settings import get_settings
+            self.register(_builtins, name='builtins')
+            if importlib.util.find_spec("skimage") is not None:
+                from . import _skimage_data
+
+                self.register(_skimage_data, name='scikit-image')
+
+            from ..settings import get_settings
 
             # dicts to store maps from extension -> plugin_name
             plugin_settings = get_settings().plugins
@@ -132,6 +136,7 @@ class NapariPluginManager(PluginManager):
         self,
         name_or_object: Any,
     ) -> Optional[Any]:
+
         if isinstance(name_or_object, str):
             _name = name_or_object
         else:
@@ -370,11 +375,11 @@ class NapariPluginManager(PluginManager):
             return
 
         _data = {}
-        for theme_id, theme_colors in data.items():
+        for theme_name, theme_colors in data.items():
             try:
                 theme = Theme.parse_obj(theme_colors)
-                register_theme(theme_id, theme, plugin_name)
-                _data[theme_id] = theme
+                register_theme(theme_name, theme)
+                _data[theme_name] = theme
             except (KeyError, ValidationError) as err:
                 warn_msg = trans._(
                     "In {hook_name!r}, plugin {plugin_name!r} provided an invalid dict object for creating themes. {err!r}",
@@ -396,8 +401,8 @@ class NapariPluginManager(PluginManager):
             return
 
         # unregister all themes that were provided by the plugins
-        for theme_id in self._theme_data[plugin_name]:
-            unregister_theme(theme_id)
+        for theme_name in self._theme_data[plugin_name]:
+            unregister_theme(theme_name)
 
         # since its possible that disabled/removed plugin was providing the
         # current theme, we check for this explicitly and if this the case,
@@ -433,25 +438,8 @@ class NapariPluginManager(PluginManager):
     def iter_widgets(self) -> Iterator[Tuple[str, Tuple[str, Dict[str, Any]]]]:
         from itertools import chain, repeat
 
-        # The content of contribution dictionaries is name of plugin and
-        # list of its names of widgets contributed by this plugin
-        # as this order do not depend on the order of contributions in file
-        # we sort it to make it easier searchable.
-
-        dock_widgets = zip(
-            repeat("dock"),
-            (
-                (name, sorted(cont))
-                for name, cont in self._dock_widgets.items()
-            ),
-        )
-        func_widgets = zip(
-            repeat("func"),
-            (
-                (name, sorted(cont))
-                for name, cont in self._function_widgets.items()
-            ),
-        )
+        dock_widgets = zip(repeat("dock"), self._dock_widgets.items())
+        func_widgets = zip(repeat("func"), self._function_widgets.items())
         yield from chain(dock_widgets, func_widgets)
 
     def register_dock_widget(
@@ -459,6 +447,7 @@ class NapariPluginManager(PluginManager):
         args: Union[AugmentedWidget, List[AugmentedWidget]],
         hookimpl: HookImplementation,
     ):
+
         plugin_name = hookimpl.plugin_name
         hook_name = '`napari_experimental_provide_dock_widget`'
         for arg in args if isinstance(args, list) else [args]:
@@ -611,7 +600,7 @@ class NapariPluginManager(PluginManager):
         Raises
         ------
         KeyError
-            If plugin `plugin_name` is not installed or does not provide any widgets.
+            If plugin `plugin_name` does not provide any widgets
         KeyError
             If plugin does not provide a widget named `widget_name`.
         ValueError
@@ -621,7 +610,7 @@ class NapariPluginManager(PluginManager):
         plg_wdgs = self._dock_widgets.get(plugin_name)
         if not plg_wdgs:
             msg = trans._(
-                'Plugin {plugin_name!r} is not installed or does not provide any dock widgets',
+                'Plugin {plugin_name!r} does not provide any dock widgets',
                 plugin_name=plugin_name,
                 deferred=True,
             )
@@ -637,7 +626,7 @@ class NapariPluginManager(PluginManager):
                 )
                 raise ValueError(msg)
 
-            widget_name = next(iter(plg_wdgs))
+            widget_name = list(plg_wdgs)[0]
         else:
             if widget_name not in plg_wdgs:
                 msg = trans._(
@@ -666,7 +655,7 @@ class NapariPluginManager(PluginManager):
         extensions : Union[str, Iterable[str]]
             Name(s) of extensions to always write with `reader`
         """
-        from napari.settings import get_settings
+        from ..settings import get_settings
 
         self._assign_plugin_to_extensions(reader, extensions, type_='reader')
         extension2readers = get_settings().plugins.extension2reader
@@ -691,7 +680,7 @@ class NapariPluginManager(PluginManager):
         extensions : Union[str, Iterable[str]]
             Name(s) of extensions to always write with `writer`
         """
-        from napari.settings import get_settings
+        from ..settings import get_settings
 
         self._assign_plugin_to_extensions(writer, extensions, type_='writer')
         get_settings().plugins.extension2writer = self._extension2writer
@@ -755,10 +744,11 @@ class NapariPluginManager(PluginManager):
                 ext = f".{ext}"
             ext_map[ext] = plugin
 
-            func = None
             # give warning that plugin *may* not be able to read that extension
-            with contextlib.suppress(Exception):
+            try:
                 func = caller._call_plugin(plugin, path=f'_testing_{ext}')
+            except Exception:
+                pass
             if func is None:
                 msg = trans._(
                     'plugin {plugin!r} did not return a {type_} function when provided a path ending in {ext!r}. This *may* indicate a typo?',

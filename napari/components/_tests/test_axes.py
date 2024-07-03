@@ -1,7 +1,7 @@
-from napari.components.overlays.axes import AxesOverlay
+from napari.components.axes import Axes
 
 
 def test_axes():
     """Test creating axes object"""
-    axes = AxesOverlay()
+    axes = Axes()
     assert axes is not None

@@ -3,13 +3,11 @@ nD surface
 ==========
 
 Display a 3D surface
-
-.. tags:: visualization-nD
 """
 
 import numpy as np
-
 import napari
+
 
 # create the viewer and window
 viewer = napari.Viewer(ndisplay=3)

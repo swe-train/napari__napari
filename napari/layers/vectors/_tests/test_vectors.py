@@ -3,11 +3,7 @@ import pandas as pd
 import pytest
 from vispy.color import get_colormap
 
-from napari._tests.utils import (
-    assert_colors_equal,
-    check_layer_world_data_extent,
-)
-from napari.components.dims import Dims
+from napari._tests.utils import check_layer_world_data_extent
 from napari.layers import Vectors
 from napari.utils.colormaps.standardize_color import transform_color
 
@@ -22,7 +18,7 @@ def test_random_vectors():
     data = np.random.random(shape)
     data[:, 0, :] = 20 * data[:, 0, :]
     layer = Vectors(data)
-    np.testing.assert_array_equal(layer.data, data)
+    assert np.all(layer.data == data)
     assert layer.data.shape == shape
     assert layer.ndim == shape[2]
     assert layer._view_data.shape[2] == 2
@@ -63,31 +59,10 @@ def test_empty_vectors():
     shape = (0, 2, 2)
     data = np.empty(shape)
     layer = Vectors(data)
-    np.testing.assert_array_equal(layer.data, data)
+    assert np.all(layer.data == data)
     assert layer.data.shape == shape
     assert layer.ndim == shape[2]
     assert layer._view_data.shape[2] == 2
-
-
-def test_empty_vectors_with_features():
-    """See the following for the points issues this covers:
-    https://github.com/napari/napari/issues/5632
-    https://github.com/napari/napari/issues/5634
-    """
-    vectors = Vectors(
-        features={'a': np.empty(0, int)},
-        feature_defaults={'a': 0},
-        edge_color='a',
-        edge_color_cycle=list('rgb'),
-    )
-
-    vectors.data = np.concatenate((vectors.data, [[[0, 0], [1, 1]]]))
-    vectors.feature_defaults['a'] = 1
-    vectors.data = np.concatenate((vectors.data, [[[1, 1], [2, 2]]]))
-    vectors.feature_defaults = {'a': 2}
-    vectors.data = np.concatenate((vectors.data, [[[2, 2], [3, 3]]]))
-
-    assert_colors_equal(vectors.edge_color, list('rgb'))
 
 
 def test_empty_vectors_with_property_choices():
@@ -96,7 +71,7 @@ def test_empty_vectors_with_property_choices():
     data = np.empty(shape)
     property_choices = {'angle': np.array([0.5], dtype=float)}
     layer = Vectors(data, property_choices=property_choices)
-    np.testing.assert_array_equal(layer.data, data)
+    assert np.all(layer.data == data)
     assert layer.data.shape == shape
     assert layer.ndim == shape[2]
     assert layer._view_data.shape[2] == 2
@@ -147,7 +122,7 @@ def test_random_3D_vectors():
     data = np.random.random(shape)
     data[:, 0, :] = 20 * data[:, 0, :]
     layer = Vectors(data)
-    np.testing.assert_array_equal(layer.data, data)
+    assert np.all(layer.data == data)
     assert layer.data.shape == shape
     assert layer.ndim == shape[2]
     assert layer._view_data.shape[2] == 2
@@ -176,7 +151,7 @@ def test_empty_3D_vectors():
     shape = (0, 2, 3)
     data = np.empty(shape)
     layer = Vectors(data)
-    np.testing.assert_array_equal(layer.data, data)
+    assert np.all(layer.data == data)
     assert layer.data.shape == shape
     assert layer.ndim == shape[2]
     assert layer._view_data.shape[2] == 2
@@ -284,7 +259,7 @@ def test_changing_data():
     data_b[:, 0, :] = 20 * data_b[:, 0, :]
     layer = Vectors(data_b)
     layer.data = data_b
-    np.testing.assert_array_equal(layer.data, data_b)
+    assert np.all(layer.data == data_b)
     assert layer.data.shape == shape_b
     assert layer.ndim == shape_b[2]
     assert layer._view_data.shape[2] == 2
@@ -430,7 +405,7 @@ def test_edge_color_cycle():
     )
     np.testing.assert_equal(layer.properties, properties)
     edge_color_array = transform_color(color_cycle * int(shape[0] / 2))
-    np.testing.assert_array_equal(layer.edge_color, edge_color_array)
+    assert np.all(layer.edge_color == edge_color_array)
 
 
 def test_edge_color_colormap():
@@ -449,11 +424,11 @@ def test_edge_color_colormap():
     np.testing.assert_equal(layer.properties, properties)
     assert layer.edge_color_mode == 'colormap'
     edge_color_array = transform_color(['black', 'white'] * int(shape[0] / 2))
-    np.testing.assert_array_equal(layer.edge_color, edge_color_array)
+    assert np.all(layer.edge_color == edge_color_array)
 
     # change the color cycle - edge_color should not change
     layer.edge_color_cycle = ['red', 'blue']
-    np.testing.assert_array_equal(layer.edge_color, edge_color_array)
+    assert np.all(layer.edge_color == edge_color_array)
 
     # adjust the clims
     layer.edge_contrast_limits = (0, 3)
@@ -632,7 +607,7 @@ def test_value_3d(position, view_direction, dims_displayed, world):
     data = np.random.random((10, 2, 3))
     data[:, 0, :] = 20 * data[:, 0, :]
     layer = Vectors(data)
-    layer._slice_dims(Dims(ndim=3, ndisplay=3))
+    layer._slice_dims([0, 0, 0], ndisplay=3)
     value = layer.get_value(
         position,
         view_direction=view_direction,
@@ -649,7 +624,7 @@ def test_message():
     data[:, 0, :] = 20 * data[:, 0, :]
     layer = Vectors(data)
     msg = layer.get_status((0,) * 2)
-    assert isinstance(msg, dict)
+    assert type(msg) == str
 
 
 def test_world_data_extent():
@@ -660,7 +635,7 @@ def test_world_data_extent():
     max_val = (8, 30, 12)
     layer = Vectors(np.array(data))
     extent = np.array((min_val, max_val))
-    check_layer_world_data_extent(layer, extent, (3, 1, 1), (10, 20, 5))
+    check_layer_world_data_extent(layer, extent, (3, 1, 1), (10, 20, 5), False)
 
 
 def test_out_of_slice_display():
@@ -687,10 +662,3 @@ def test_out_of_slice_display():
 
     layer = Vectors(data, out_of_slice_display=True)
     assert layer.out_of_slice_display is True
-
-
-def test_empty_data_from_tuple():
-    """Test that empty data raises an error."""
-    layer = Vectors(name="vector", ndim=3)
-    layer2 = Vectors.create(*layer.as_layer_data_tuple())
-    assert layer2.data.size == 0

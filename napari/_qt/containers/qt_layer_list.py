@@ -2,24 +2,19 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from qtpy.QtCore import QSortFilterProxyModel, Qt  # type: ignore[attr-defined]
+from qtpy.QtCore import QSortFilterProxyModel, Qt
 
-from napari._qt.containers._base_item_model import (
-    SortRole,
-    _BaseEventedItemModel,
-)
-from napari._qt.containers._layer_delegate import LayerDelegate
-from napari._qt.containers.qt_list_view import QtListView
-from napari.layers import Layer
-from napari.utils.translations import trans
+from ...layers import Layer
+from ...utils.translations import trans
+from ._base_item_model import SortRole, _BaseEventedItemModel
+from ._layer_delegate import LayerDelegate
+from .qt_list_view import QtListView
 
 if TYPE_CHECKING:
-    from typing import Optional
+    from qtpy.QtGui import QKeyEvent
+    from qtpy.QtWidgets import QWidget
 
-    from qtpy.QtGui import QKeyEvent  # type: ignore[attr-defined]
-    from qtpy.QtWidgets import QWidget  # type: ignore[attr-defined]
-
-    from napari.components.layerlist import LayerList
+    from ...components.layerlist import LayerList
 
 
 class ReverseProxyModel(QSortFilterProxyModel):
@@ -29,7 +24,7 @@ class ReverseProxyModel(QSortFilterProxyModel):
         super().__init__()
         self.setSourceModel(model)
         self.setSortRole(SortRole)
-        self.sort(0, Qt.SortOrder.DescendingOrder)
+        self.sort(0, Qt.DescendingOrder)
 
     def dropMimeData(self, data, action, destRow, col, parent):
         """Handle destination row for dropping with reversed indices."""
@@ -44,30 +39,20 @@ class QtLayerList(QtListView[Layer]):
     reversing the view with ReverseProxyModel.
     """
 
-    def __init__(
-        self, root: LayerList, parent: Optional[QWidget] = None
-    ) -> None:
+    def __init__(self, root: LayerList, parent: QWidget = None):
         super().__init__(root, parent)
-        layer_delegate = LayerDelegate()
-        self.setItemDelegate(layer_delegate)
-        # To be able to update the loading indicator frame in the item delegate
-        # smoothly and also be able to leave the item painted in a coherent
-        # state (showing the loading indicator or the thumbnail)
-        viewport = self.viewport()
-        assert viewport is not None
-
-        layer_delegate.loading_frame_changed.connect(viewport.update)
-
+        self.setItemDelegate(LayerDelegate())
         self.setToolTip(trans._('Layer list'))
+        font = self.font()
+        font.setPointSize(12)
+        self.setFont(font)
 
         # This reverses the order of the items in the view,
         # so items at the end of the list are at the top.
         self.setModel(ReverseProxyModel(self.model()))
 
-    def keyPressEvent(self, e: Optional[QKeyEvent]) -> None:
+    def keyPressEvent(self, e: QKeyEvent) -> None:
         """Override Qt event to pass events to the viewer."""
-        if e is None:
-            return
         if e.key() != Qt.Key.Key_Space:
             super().keyPressEvent(e)
         if e.key() not in (Qt.Key.Key_Backspace, Qt.Key.Key_Delete):

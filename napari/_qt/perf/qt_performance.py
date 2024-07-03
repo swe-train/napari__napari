@@ -1,7 +1,6 @@
 """QtPerformance widget to show performance information.
 """
 import time
-from typing import ClassVar, List
 
 from qtpy.QtCore import Qt, QTimer
 from qtpy.QtGui import QTextCursor
@@ -17,8 +16,8 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from napari.utils import perf
-from napari.utils.translations import trans
+from ...utils import perf
+from ...utils.translations import trans
 
 
 class TextLog(QTextEdit):
@@ -37,8 +36,8 @@ class TextLog(QTextEdit):
         time_ms : float
             Duration of the timer in milliseconds.
         """
-        self.moveCursor(QTextCursor.MoveOperation.End)
-        self.setTextColor(Qt.GlobalColor.red)
+        self.moveCursor(QTextCursor.End)
+        self.setTextColor(Qt.red)
         self.insertPlainText(
             trans._("{time_ms:5.0f}ms {name}\n", time_ms=time_ms, name=name)
         )
@@ -75,7 +74,7 @@ class QtPerformance(QWidget):
 
     # We log events slower than some threshold (in milliseconds).
     THRESH_DEFAULT = 100
-    THRESH_OPTIONS: ClassVar[List[str]] = [
+    THRESH_OPTIONS = [
         "1",
         "5",
         "10",
@@ -92,12 +91,10 @@ class QtPerformance(QWidget):
     # display will look, but the more we will slow things down.
     UPDATE_MS = 250
 
-    def __init__(self) -> None:
+    def __init__(self):
         """Create our windgets."""
         super().__init__()
         layout = QVBoxLayout()
-        # We log slow events to this window.
-        self.log = TextLog()
 
         # For our "uptime" timer.
         self.start_time = time.time()
@@ -119,7 +116,7 @@ class QtPerformance(QWidget):
         self.thresh_ms = self.THRESH_DEFAULT
         self.thresh_combo = QComboBox()
         self.thresh_combo.addItems(self.THRESH_OPTIONS)
-        self.thresh_combo.currentTextChanged.connect(self._change_thresh)
+        self.thresh_combo.activated[str].connect(self._change_thresh)
         self.thresh_combo.setCurrentText(str(self.thresh_ms))
 
         combo_layout = QHBoxLayout()
@@ -131,6 +128,8 @@ class QtPerformance(QWidget):
         )
         layout.addLayout(combo_layout)
 
+        # We log slow events to this window.
+        self.log = TextLog()
         layout.addWidget(self.log)
 
         # Uptime label. To indicate if the widget is getting updated.
@@ -160,9 +159,10 @@ class QtPerformance(QWidget):
         # Updating widgets can create immediate Qt Events which would modify the
         # timers out from under us!
         for name, timer in perf.timers.timers.items():
+
             # The Qt Event "UpdateRequest" is the main "draw" event, so
             # that's what we use for our progress bar.
-            if name.startswith("UpdateRequest"):
+            if name == "UpdateRequest":
                 average = timer.average
 
             # Log any "long" events to the text window.

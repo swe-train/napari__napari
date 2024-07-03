@@ -2,16 +2,9 @@
 """
 from __future__ import annotations
 
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Protocol,
-    Tuple,
-    Union,
-    runtime_checkable,
-)
+from typing import TYPE_CHECKING, Any, Tuple, Union
 
-from napari.utils.translations import trans
+from typing_extensions import Protocol, runtime_checkable
 
 _OBJ_NAMES = set(dir(Protocol))
 _OBJ_NAMES.update({'__annotations__', '__dict__', '__weakref__'})
@@ -19,13 +12,13 @@ _OBJ_NAMES.update({'__annotations__', '__dict__', '__weakref__'})
 if TYPE_CHECKING:
     from enum import Enum
 
-    from numpy.typing import DTypeLike
+    from ..types import DTypeLike
 
     # https://github.com/python/typing/issues/684#issuecomment-548203158
     class ellipsis(Enum):
         Ellipsis = "..."
 
-    Ellipsis = ellipsis.Ellipsis  # noqa: A001
+    Ellipsis = ellipsis.Ellipsis
 else:
     ellipsis = type(Ellipsis)
 
@@ -35,12 +28,10 @@ def _raise_protocol_error(obj: Any, protocol: type):
     annotations = getattr(protocol, '__annotations__', {})
     needed = set(dir(protocol)).union(annotations) - _OBJ_NAMES
     missing = needed - set(dir(obj))
-    message = trans._(
-        "Object of type {type_name} does not implement {protocol_name} Protocol.\nMissing methods: {missing_methods}",
-        deferred=True,
-        type_name=repr(type(obj).__name__),
-        protocol_name=repr(protocol.__name__),
-        missing_methods=repr(missing),
+    message = (
+        f"Object of type {type(obj).__name__!r} does not implement "
+        f"{protocol.__name__!r} Protocol.\n"
+        f"Missing methods: {missing!r}"
     )
     raise TypeError(message)
 

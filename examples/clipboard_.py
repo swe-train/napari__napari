@@ -4,19 +4,17 @@ Clipboard
 
 Copy screenshot of the canvas or the whole viewer to clipboard.
 
-.. tags:: gui
 """
 
-from qtpy.QtWidgets import QPushButton, QVBoxLayout, QWidget
 from skimage import data
-
+from qtpy.QtWidgets import QVBoxLayout, QPushButton, QWidget
 import napari
 
 # create the viewer with an image
 viewer = napari.view_image(data.moon())
 
 class Grabber(QWidget):
-    def __init__(self) -> None:
+    def __init__(self):
         super().__init__()
 
         self.copy_canvas_btn = QPushButton("Copy Canvas to Clipboard", self)
@@ -34,8 +32,8 @@ def create_grabber_widget():
     widget = Grabber()
 
     # connect buttons
-    widget.copy_canvas_btn.clicked.connect(lambda: viewer.window.clipboard(canvas_only=True))
-    widget.copy_viewer_btn.clicked.connect(lambda: viewer.window.clipboard(canvas_only=False))
+    widget.copy_canvas_btn.clicked.connect(lambda: viewer.window.qt_viewer.clipboard())
+    widget.copy_viewer_btn.clicked.connect(lambda: viewer.window.clipboard())
     return widget
 
 

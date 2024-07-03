@@ -1,8 +1,8 @@
 import numpy as np
 
-from napari.layers.shapes._shapes_models.shape import Shape
-from napari.layers.shapes._shapes_utils import create_box
-from napari.utils.translations import trans
+from ....utils.translations import trans
+from .._shapes_utils import create_box
+from .shape import Shape
 
 
 class Line(Shape):
@@ -29,7 +29,8 @@ class Line(Shape):
         z_index=0,
         dims_order=None,
         ndisplay=2,
-    ) -> None:
+    ):
+
         super().__init__(
             edge_width=edge_width,
             z_index=z_index,

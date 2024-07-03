@@ -1,24 +1,13 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Generic, TypeVar, cast
 
 import numpy as np
-from vispy.scene import VisualNode
 from vispy.visuals.transforms import MatrixTransform
 
-from napari._vispy.overlays.base import VispyBaseOverlay
-from napari._vispy.utils.gl import BLENDING_MODES, get_max_texture_sizes
-from napari.components.overlays.base import (
-    CanvasOverlay,
-    Overlay,
-    SceneOverlay,
-)
-from napari.layers import Layer
-from napari.utils.events import disconnect_events
-
-_L = TypeVar("_L", bound=Layer)
+from ...utils.events import disconnect_events
+from ..utils.gl import BLENDING_MODES, get_max_texture_sizes
 
 
-class VispyBaseLayer(ABC, Generic[_L]):
+class VispyBaseLayer(ABC):
     """Base object for individual layer views
 
     Meant to be subclassed.
@@ -52,18 +41,13 @@ class VispyBaseLayer(ABC, Generic[_L]):
         Transform positioning the layer visual inside the scenecanvas.
     """
 
-    layer: _L
-    overlays: Dict[Overlay, VispyBaseOverlay]
-
-    def __init__(self, layer: _L, node: VisualNode) -> None:
+    def __init__(self, layer, node):
         super().__init__()
         self.events = None  # Some derived classes have events.
 
         self.layer = layer
         self._array_like = False
         self.node = node
-        self.first_visible = False
-        self.overlays = {}
 
         (
             self.MAX_TEXTURE_SIZE_2D,
@@ -83,7 +67,6 @@ class VispyBaseLayer(ABC, Generic[_L]):
         self.layer.experimental_clipping_planes.events.connect(
             self._on_experimental_clipping_planes_change
         )
-        self.layer.events._overlays.connect(self._on_overlays_change)
 
     @property
     def _master_transform(self):
@@ -120,11 +103,10 @@ class VispyBaseLayer(ABC, Generic[_L]):
     @order.setter
     def order(self, order):
         self.node.order = order
-        self._on_blending_change()
 
     @abstractmethod
     def _on_data_change(self):
-        raise NotImplementedError
+        raise NotImplementedError()
 
     def _on_refresh_change(self):
         self.node.update()
@@ -135,73 +117,14 @@ class VispyBaseLayer(ABC, Generic[_L]):
     def _on_opacity_change(self):
         self.node.opacity = self.layer.opacity
 
-    def _on_blending_change(self, event=None):
-        blending = self.layer.blending
-        blending_kwargs = cast(dict, BLENDING_MODES[blending]).copy()
-
-        if self.first_visible:
-            # if the first layer, then we should blend differently
-            # the goal is to prevent pathological blending with canvas
-            # for minimum, use the src color, ignore alpha & canvas
-            if blending == 'minimum':
-                src_color_blending = 'one'
-                dst_color_blending = 'zero'
-            # for additive, use the src alpha and blend to black
-            elif blending == 'additive':
-                src_color_blending = 'src_alpha'
-                dst_color_blending = 'zero'
-            # for all others, use translucent blending
-            else:
-                src_color_blending = 'src_alpha'
-                dst_color_blending = 'one_minus_src_alpha'
-            blending_kwargs = {
-                "depth_test": blending_kwargs['depth_test'],
-                "cull_face": False,
-                "blend": True,
-                "blend_func": (
-                    src_color_blending,
-                    dst_color_blending,
-                    'one',
-                    'one',
-                ),
-                "blend_equation": 'func_add',
-            }
-
+    def _on_blending_change(self):
+        blending_kwargs = BLENDING_MODES[self.layer.blending]
         self.node.set_gl_state(**blending_kwargs)
         self.node.update()
 
-    def _on_overlays_change(self):
-        # avoid circular import; TODO: fix?
-        from napari._vispy.utils.visual import create_vispy_overlay
-
-        overlay_models = self.layer._overlays.values()
-
-        for overlay in overlay_models:
-            if overlay in self.overlays:
-                continue
-
-            with self.layer.events._overlays.blocker():
-                overlay_visual = create_vispy_overlay(
-                    overlay, layer=self.layer
-                )
-            self.overlays[overlay] = overlay_visual
-            if isinstance(overlay, CanvasOverlay):
-                overlay_visual.node.parent = self.node.parent.parent  # viewbox
-            elif isinstance(overlay, SceneOverlay):
-                overlay_visual.node.parent = self.node
-
-            overlay_visual.node.parent = self.node
-            overlay_visual.reset()
-
-        for overlay in list(self.overlays):
-            if overlay not in overlay_models:
-                overlay_visual = self.overlays.pop(overlay)
-                overlay_visual.close()
-
     def _on_matrix_change(self):
-        # mypy: self.layer._transforms.simplified cannot be None
-        transform = self.layer._transforms.simplified.set_slice(  # type: ignore [union-attr]
-            self.layer._slice_input.displayed
+        transform = self.layer._transforms.simplified.set_slice(
+            self.layer._dims_displayed
         )
         # convert NumPy axis ordering to VisPy axis ordering
         # by reversing the axes order and flipping the linear
@@ -214,13 +137,13 @@ class VispyBaseLayer(ABC, Generic[_L]):
         affine_matrix[: matrix.shape[0], : matrix.shape[1]] = matrix
         affine_matrix[-1, : len(translate)] = translate
 
-        if self._array_like and self.layer._slice_input.ndisplay == 2:
+        if self._array_like and self.layer._ndisplay == 2:
             # Perform pixel offset to shift origin from top left corner
             # of pixel to center of pixel.
             # Note this offset is only required for array like data in
             # 2D.
             offset_matrix = self.layer._data_to_world.set_slice(
-                self.layer._slice_input.displayed
+                self.layer._dims_displayed
             ).linear_matrix
             offset = -offset_matrix @ np.ones(offset_matrix.shape[1]) / 2
             # Convert NumPy axis ordering to VisPy axis ordering
@@ -230,33 +153,12 @@ class VispyBaseLayer(ABC, Generic[_L]):
             affine_matrix = affine_matrix @ affine_offset
         self._master_transform.matrix = affine_matrix
 
-        # Because of performance reason, for multiscale images
-        # we load only visible part of data to GPU.
-        # To place this part of data correctly we update transform,
-        # but this leads to incorrect placement of child layers.
-        # To fix this we need to update child layers transform.
-        child_matrix = np.eye(4)
-        child_matrix[-1, : len(translate)] = (
-            self.layer.translate[self.layer._slice_input.displayed][::-1]
-            + self.layer.affine.translate[self.layer._slice_input.displayed][
-                ::-1
-            ]
-            - translate
-        )
-        for child in self.node.children:
-            child.transform.matrix = child_matrix
-
     def _on_experimental_clipping_planes_change(self):
-        if hasattr(self.node, 'clipping_planes') and hasattr(
-            self.layer, 'experimental_clipping_planes'
-        ):
-            # invert axes because vispy uses xyz but napari zyx
+        if hasattr(self.node, 'clipping_planes'):
             self.node.clipping_planes = (
+                # invert axes because vispy uses xyz but napari zyx
                 self.layer.experimental_clipping_planes.as_array()[..., ::-1]
             )
-
-    def _on_camera_move(self, event=None):
-        return
 
     def reset(self):
         self._on_visible_change()
@@ -264,8 +166,6 @@ class VispyBaseLayer(ABC, Generic[_L]):
         self._on_blending_change()
         self._on_matrix_change()
         self._on_experimental_clipping_planes_change()
-        self._on_overlays_change()
-        self._on_camera_move()
 
     def _on_poll(self, event=None):
         """Called when camera moves, before we are drawn.
@@ -274,6 +174,7 @@ class VispyBaseLayer(ABC, Generic[_L]):
         visual can finish up what it was doing, such as loading data into
         VRAM or animating itself.
         """
+        pass
 
     def close(self):
         """Vispy visual is closing."""

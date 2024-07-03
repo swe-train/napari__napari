@@ -4,17 +4,15 @@ Add labels
 
 Display a labels layer above of an image layer using the ``add_labels`` and
 ``add_image`` APIs
-
-.. tags:: layers, visualization-basic
 """
 
 from skimage import data
 from skimage.filters import threshold_otsu
-from skimage.measure import label
-from skimage.morphology import closing, remove_small_objects, square
 from skimage.segmentation import clear_border
-
+from skimage.measure import label
+from skimage.morphology import closing, square, remove_small_objects
 import napari
+
 
 image = data.coins()[50:-50, 50:-50]
 

@@ -3,14 +3,12 @@ Add grayscale image
 ===================
 
 Display one grayscale image using the add_image API.
-
-.. tags:: visualization-basic
 """
 
-import numpy as np
 from skimage import data
-
 import napari
+import numpy as np
+
 
 # simulating a grayscale image here for testing contrast limits adjustments
 image = data.astronaut().mean(-1) * 100 + 100

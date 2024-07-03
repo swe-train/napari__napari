@@ -2,17 +2,17 @@
 # from napari.utils.events import Event
 # from napari.utils.colormaps import AVAILABLE_COLORMAPS
 
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Union
 from warnings import warn
 
 import numpy as np
 import pandas as pd
 
-from napari.layers.base import Layer
-from napari.layers.tracks._track_utils import TrackManager
-from napari.utils.colormaps import AVAILABLE_COLORMAPS, Colormap
-from napari.utils.events import Event
-from napari.utils.translations import trans
+from ...utils.colormaps import AVAILABLE_COLORMAPS, Colormap
+from ...utils.events import Event
+from ...utils.translations import trans
+from ..base import Layer
+from ._track_utils import TrackManager
 
 
 class Tracks(Layer):
@@ -93,6 +93,8 @@ class Tracks(Layer):
     # The max number of tracks that will ever be used to render the thumbnail
     # If more tracks are present then they are randomly subsampled
     _max_tracks_thumbnail = 1024
+    _max_length = 300
+    _max_width = 20
 
     def __init__(
         self,
@@ -101,9 +103,9 @@ class Tracks(Layer):
         features=None,
         properties=None,
         graph=None,
-        tail_width: int = 2,
-        tail_length: int = 30,
-        head_length: int = 0,
+        tail_width=2,
+        tail_length=30,
+        head_length=0,
         name=None,
         metadata=None,
         scale=None,
@@ -111,7 +113,7 @@ class Tracks(Layer):
         rotate=None,
         shear=None,
         affine=None,
-        opacity=1.0,
+        opacity=1,
         blending='additive',
         visible=True,
         colormap='turbo',
@@ -119,11 +121,14 @@ class Tracks(Layer):
         colormaps_dict=None,
         cache=True,
         experimental_clipping_planes=None,
-        projection_mode='none',
-    ) -> None:
+    ):
+
         # if not provided with any data, set up an empty layer in 2D+t
-        # otherwise convert the data to an np.ndarray
-        data = np.empty((0, 4)) if data is None else np.asarray(data)
+        if data is None:
+            data = np.empty((0, 4))
+        else:
+            # convert data to a numpy array if it is not already one
+            data = np.asarray(data)
 
         # set the track data dimensions (remove ID from data)
         ndim = data.shape[1] - 1
@@ -143,7 +148,6 @@ class Tracks(Layer):
             visible=visible,
             cache=cache,
             experimental_clipping_planes=experimental_clipping_planes,
-            projection_mode=projection_mode,
         )
 
         self.events.add(
@@ -161,19 +165,14 @@ class Tracks(Layer):
         )
 
         # track manager deals with data slicing, graph building and properties
-        self._manager = TrackManager(data)
-
-        self._track_colors: Optional[np.ndarray] = None
+        self._manager = TrackManager()
+        self._track_colors = None
         self._colormaps_dict = colormaps_dict or {}  # additional colormaps
         self._color_by = color_by  # default color by ID
         self._colormap = colormap
 
         # use this to update shaders when the displayed dims change
         self._current_displayed_dims = None
-
-        # track display default limits
-        self._max_length = 300
-        self._max_width = 20
 
         # track display properties
         self.tail_width = tail_width
@@ -194,7 +193,7 @@ class Tracks(Layer):
         self.color_by = color_by
         self.colormap = colormap
 
-        self.refresh()
+        self._update_dims()
 
         # reset the display before returning
         self._current_displayed_dims = None
@@ -248,10 +247,9 @@ class Tracks(Layer):
         """Sets the view given the indices to slice with."""
 
         # if the displayed dims have changed, update the shader data
-        dims_displayed = self._slice_input.displayed
-        if dims_displayed != self._current_displayed_dims:
+        if self._dims_displayed != self._current_displayed_dims:
             # store the new dims
-            self._current_displayed_dims = dims_displayed
+            self._current_displayed_dims = self._dims_displayed
             # fire the events to update the shaders
             self.events.rebuild_tracks()
             self.events.rebuild_graph()
@@ -282,9 +280,9 @@ class Tracks(Layer):
 
         if self._view_data is not None and self.track_colors is not None:
             de = self._extent_data
-            min_vals = [de[0, i] for i in self._slice_input.displayed]
+            min_vals = [de[0, i] for i in self._dims_displayed]
             shape = np.ceil(
-                [de[1, i] - de[0, i] + 1 for i in self._slice_input.displayed]
+                [de[1, i] - de[0, i] + 1 for i in self._dims_displayed]
             ).astype(int)
             zoom_factor = np.divide(
                 self._thumbnail_shape[:2], shape[-2:]
@@ -332,22 +330,22 @@ class Tracks(Layer):
     def _pad_display_data(self, vertices):
         """pad display data when moving between 2d and 3d"""
         if vertices is None:
-            return None
+            return
 
-        data = vertices[:, self._slice_input.displayed]
+        data = vertices[:, self._dims_displayed]
         # if we're only displaying two dimensions, then pad the display dim
         # with zeros
-        if self._slice_input.ndisplay == 2:
+        if self._ndisplay == 2:
             data = np.pad(data, ((0, 0), (0, 1)), 'constant')
             return data[:, (1, 0, 2)]  # y, x, z -> x, y, z
-
-        return data[:, (2, 1, 0)]  # z, y, x -> x, y, z
+        else:
+            return data[:, (2, 1, 0)]  # z, y, x -> x, y, z
 
     @property
     def current_time(self):
         """current time according to the first dimension"""
         # TODO(arl): get the correct index here
-        time_step = self._data_slice.point[0]
+        time_step = self._slice_indices[0]
 
         if isinstance(time_step, slice):
             # if we are visualizing all time, then just set to the maximum
@@ -360,7 +358,7 @@ class Tracks(Layer):
     def use_fade(self) -> bool:
         """toggle whether we fade the tail of the track, depending on whether
         the time dimension is displayed"""
-        return 0 in self._slice_input.not_displayed
+        return 0 in self._dims_not_displayed
 
     @property
     def data(self) -> np.ndarray:
@@ -387,7 +385,7 @@ class Tracks(Layer):
         self.events.rebuild_tracks()
         self.events.rebuild_graph()
         self.events.data(value=self.data)
-        self._reset_editable()
+        self._set_editable()
 
     @property
     def features(self):
@@ -413,13 +411,18 @@ class Tracks(Layer):
         features: Union[Dict[str, np.ndarray], pd.DataFrame],
     ) -> None:
         self._manager.features = features
-        self._check_color_by_in_features()
         self.events.properties()
+        self._check_color_by_in_features()
 
     @property
     def properties(self) -> Dict[str, np.ndarray]:
         """dict {str: np.ndarray (N,)}: Properties for each track."""
         return self._manager.properties
+
+    @property
+    def properties_to_color_by(self) -> List[str]:
+        """track properties that can be used for coloring etc..."""
+        return list(self.properties.keys())
 
     @properties.setter
     def properties(self, properties: Dict[str, np.ndarray]):
@@ -427,55 +430,44 @@ class Tracks(Layer):
         self.features = properties
 
     @property
-    def properties_to_color_by(self) -> List[str]:
-        """track properties that can be used for coloring etc..."""
-        return list(self.properties.keys())
-
-    @property
-    def graph(self) -> Optional[Dict[int, List[int]]]:
+    def graph(self) -> Dict[int, Union[int, List[int]]]:
         """dict {int: list}: Graph representing associations between tracks."""
         return self._manager.graph
 
     @graph.setter
     def graph(self, graph: Dict[int, Union[int, List[int]]]):
         """Set the track graph."""
-        # Ignored type, because mypy can't handle different signatures
-        # on getters and setters; see https://github.com/python/mypy/issues/3004
-        self._manager.graph = graph  # type: ignore[assignment]
+        self._manager.graph = graph
         self._manager.build_graph()
         self.events.rebuild_graph()
 
     @property
-    def tail_width(self) -> float:
+    def tail_width(self) -> Union[int, float]:
         """float: Width for all vectors in pixels."""
         return self._tail_width
 
     @tail_width.setter
-    def tail_width(self, tail_width: float):
-        self._tail_width: float = np.clip(tail_width, 0.5, self._max_width)
+    def tail_width(self, tail_width: Union[int, float]):
+        self._tail_width = np.clip(tail_width, 0.5, self._max_width)
         self.events.tail_width()
 
     @property
-    def tail_length(self) -> int:
+    def tail_length(self) -> Union[int, float]:
         """float: Width for all vectors in pixels."""
         return self._tail_length
 
     @tail_length.setter
-    def tail_length(self, tail_length: int):
-        if tail_length > self._max_length:
-            self._max_length = tail_length
-        self._tail_length: int = tail_length
+    def tail_length(self, tail_length: Union[int, float]):
+        self._tail_length = np.clip(tail_length, 1, self._max_length)
         self.events.tail_length()
 
     @property
-    def head_length(self) -> int:
+    def head_length(self) -> Union[int, float]:
         return self._head_length
 
     @head_length.setter
-    def head_length(self, head_length: int):
-        if head_length > self._max_length:
-            self._max_length = head_length
-        self._head_length: int = head_length
+    def head_length(self, head_length: Union[int, float]):
+        self._head_length = np.clip(head_length, 0, self._max_length)
         self.events.head_length()
 
     @property
@@ -551,9 +543,7 @@ class Tracks(Layer):
     def colormaps_dict(self) -> Dict[str, Colormap]:
         return self._colormaps_dict
 
-    # Ignored type because mypy doesn't recognise colormaps_dict as a property
-    # TODO: investigate and fix this - not sure why this is the case?
-    @colormaps_dict.setter  # type: ignore[attr-defined]
+    @colormaps_dict.setter
     def colomaps_dict(self, colormaps_dict: Dict[str, Colormap]):
         # validate the dictionary entries?
         self._colormaps_dict = colormaps_dict
@@ -585,12 +575,12 @@ class Tracks(Layer):
         self._track_colors = colormap.map(vertex_properties)
 
     @property
-    def track_connex(self) -> Optional[np.ndarray]:
+    def track_connex(self) -> np.ndarray:
         """vertex connections for drawing track lines"""
         return self._manager.track_connex
 
     @property
-    def track_colors(self) -> Optional[np.ndarray]:
+    def track_colors(self) -> np.ndarray:
         """return the vertex colors according to the currently selected
         property"""
         return self._track_colors
@@ -601,12 +591,12 @@ class Tracks(Layer):
         return self._manager.graph_connex
 
     @property
-    def track_times(self) -> Optional[np.ndarray]:
+    def track_times(self) -> np.ndarray:
         """time points associated with each track vertex"""
         return self._manager.track_times
 
     @property
-    def graph_times(self) -> Optional[np.ndarray]:
+    def graph_times(self) -> np.ndarray:
         """time points associated with each graph vertex"""
         return self._manager.graph_times
 

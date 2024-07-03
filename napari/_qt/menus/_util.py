@@ -1,12 +1,11 @@
-import contextlib
-from typing import TYPE_CHECKING, Callable, ClassVar, List, Union
+from typing import TYPE_CHECKING, Callable, List, Union
 
 from qtpy.QtWidgets import QAction, QMenu
 
 if TYPE_CHECKING:
     from typing_extensions import TypedDict
 
-    from napari.utils.events import EventEmitter
+    from ...utils.events import EventEmitter
 
     try:
         from qtpy.QtCore import SignalInstance
@@ -115,9 +114,9 @@ class NapariMenu(QMenu):
     close.
     """
 
-    _INSTANCES: ClassVar[List['NapariMenu']] = []
+    _INSTANCES: List['NapariMenu'] = []
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._INSTANCES.append(self)
 
@@ -126,14 +125,18 @@ class NapariMenu(QMenu):
         for ax in self.actions():
             ax.setData(None)
 
-            with contextlib.suppress(AttributeError):
+            try:
                 ax._destroy()
+            except AttributeError:
+                pass
+
         if self in self._INSTANCES:
             self._INSTANCES.remove(self)
 
     def update(self, event=None):
         """Update action enabled/disabled state based on action data."""
         for ax in self.actions():
-            if data := ax.data():
+            data = ax.data()
+            if data:
                 enabled_func = data.get('enabled', lambda event: True)
                 ax.setEnabled(bool(enabled_func(event)))

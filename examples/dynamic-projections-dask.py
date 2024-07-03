@@ -6,16 +6,13 @@ Using dask array operations, one can dynamically take arbitrary slices
 and computations of a source dask array and display the results in napari.
 When the computation takes one or more parameters, one can tie a UI to
 them using magicgui.
-
-.. tags:: visualization-advanced
 """
 
-import dask.array as da
 import numpy as np
+import napari
+import dask.array as da
 from dask.array.lib.stride_tricks import sliding_window_view
 from skimage import data
-
-import napari
 
 ##############################################################################
 # Part 1: using code to view a specific value.
@@ -38,8 +35,7 @@ if __name__ == '__main__':
 ##############################################################################
 # Part 2: using magicgui to vary the slice thickness.
 
-from magicgui import magicgui  # noqa: E402
-
+from magicgui import magicgui
 
 def sliding_window_mean(
     arr: napari.types.ImageData, size: int = 1

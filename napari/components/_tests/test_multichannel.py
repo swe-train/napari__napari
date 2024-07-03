@@ -61,7 +61,7 @@ multi_channel_test_data = [
     ((), {'translate': MULTI_TUPLES}),
     ((), {'blending': 'translucent'}),
     ((), {'metadata': {'hi': 'there'}}),
-    ((), {'metadata': dict(MULTI_TUPLES)}),
+    ((), {'metadata': {k: v for k, v in MULTI_TUPLES}}),
     ((), {'experimental_clipping_planes': []}),
 ]
 
@@ -109,9 +109,7 @@ def test_multichannel(shape, kwargs):
 
     for i in range(n_channels):
         # make sure that the data has been divided into layers
-        np.testing.assert_array_equal(
-            viewer.layers[i].data, data.take(i, axis=channel_axis)
-        )
+        assert np.all(viewer.layers[i].data == data.take(i, axis=channel_axis))
         # make sure colors have been assigned properly
         if 'colormap' not in kwargs:
             if n_channels == 1:
@@ -171,7 +169,7 @@ def test_multichannel_multiscale():
     for i in range(data[0].shape[-1]):
         assert np.all(
             [
-                np.array_equal(l_d, d)
+                np.all(l_d == d)
                 for l_d, d in zip(
                     viewer.layers[i].data,
                     [data[j].take(i, axis=-1) for j in range(len(data))],
@@ -193,7 +191,7 @@ def test_multichannel_implicit_multiscale():
     for i in range(data[0].shape[-1]):
         assert np.all(
             [
-                np.array_equal(l_d, d)
+                np.all(l_d == d)
                 for l_d, d in zip(
                     viewer.layers[i].data,
                     [data[j].take(i, axis=-1) for j in range(len(data))],

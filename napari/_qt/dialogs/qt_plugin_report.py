@@ -1,7 +1,5 @@
 """Provides a QtPluginErrReporter that allows the user report plugin errors.
 """
-
-import contextlib
 from typing import Optional
 
 from napari_plugin_engine import standard_metadata
@@ -18,11 +16,11 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from napari._qt.code_syntax_highlight import Pylighter
-from napari.plugins.exceptions import format_exceptions
-from napari.settings import get_settings
-from napari.utils.theme import get_theme
-from napari.utils.translations import trans
+from ...plugins.exceptions import format_exceptions
+from ...settings import get_settings
+from ...utils.theme import get_theme
+from ...utils.translations import trans
+from ..code_syntax_highlight import Pylighter
 
 
 class QtPluginErrReporter(QDialog):
@@ -63,32 +61,30 @@ class QtPluginErrReporter(QDialog):
         initial_plugin: Optional[str] = None,
     ) -> None:
         super().__init__(parent)
-        from napari.plugins import plugin_manager
+        from ...plugins import plugin_manager
 
         self.plugin_manager = plugin_manager
 
         self.setWindowTitle(trans._('Recorded Plugin Exceptions'))
-        self.setWindowModality(Qt.WindowModality.NonModal)
+        self.setWindowModality(Qt.NonModal)
         self.layout = QVBoxLayout()
         self.layout.setSpacing(0)
         self.layout.setContentsMargins(10, 10, 10, 10)
         self.setLayout(self.layout)
 
         self.text_area = QTextEdit()
-        theme = get_theme(get_settings().appearance.theme)
+        theme = get_theme(get_settings().appearance.theme, as_dict=False)
         self._highlight = Pylighter(
             self.text_area.document(), "python", theme.syntax_style
         )
-        self.text_area.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
+        self.text_area.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.text_area.setMinimumWidth(360)
 
         # Create plugin dropdown menu
         self.plugin_combo = QComboBox()
         self.plugin_combo.addItem(self.NULL_OPTION)
         bad_plugins = [e.plugin_name for e in self.plugin_manager.get_errors()]
-        self.plugin_combo.addItems(sorted(set(bad_plugins)))
+        self.plugin_combo.addItems(list(sorted(set(bad_plugins))))
         self.plugin_combo.currentTextChanged.connect(self.set_plugin)
         self.plugin_combo.setCurrentText(self.NULL_OPTION)
 
@@ -113,12 +109,10 @@ class QtPluginErrReporter(QDialog):
         # plugin_meta contains a URL to the home page, (and/or other details)
         self.plugin_meta = QLabel('', parent=self)
         self.plugin_meta.setObjectName("pluginInfo")
-        self.plugin_meta.setTextFormat(Qt.TextFormat.RichText)
-        self.plugin_meta.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextBrowserInteraction
-        )
+        self.plugin_meta.setTextFormat(Qt.RichText)
+        self.plugin_meta.setTextInteractionFlags(Qt.TextBrowserInteraction)
         self.plugin_meta.setOpenExternalLinks(True)
-        self.plugin_meta.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.plugin_meta.setAlignment(Qt.AlignRight)
 
         # make layout
         row_1_layout = QHBoxLayout()
@@ -151,10 +145,12 @@ class QtPluginErrReporter(QDialog):
         """
         self.github_button.hide()
         self.clipboard_button.hide()
-        with contextlib.suppress(RuntimeError, TypeError):
+        try:
             self.github_button.clicked.disconnect()
-            # when disconnecting a non-existent signal
-            # PySide2 raises runtimeError, PyQt5 raises TypeError
+        # when disconnecting a non-existent signal
+        # PySide2 raises runtimeError, PyQt5 raises TypeError
+        except (RuntimeError, TypeError):
+            pass
 
         if not plugin or (plugin == self.NULL_OPTION):
             self.plugin_meta.setText('')

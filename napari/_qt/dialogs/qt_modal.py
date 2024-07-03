@@ -2,7 +2,7 @@ from qtpy.QtCore import QPoint, QRect, Qt
 from qtpy.QtGui import QCursor, QGuiApplication
 from qtpy.QtWidgets import QDialog, QFrame, QVBoxLayout
 
-from napari.utils.translations import trans
+from ...utils.translations import trans
 
 
 class QtPopup(QDialog):
@@ -30,14 +30,15 @@ class QtPopup(QDialog):
     ----------
     frame : qtpy.QtWidgets.QFrame
         Frame of the popup dialog box.
+    layout : qtpy.QtWidgets.QVBoxLayout
+        Layout of the popup dialog box.
     """
 
-    def __init__(self, parent) -> None:
+    def __init__(self, parent):
         super().__init__(parent)
         self.setObjectName("QtModalPopup")
         self.setModal(False)  # if False, then clicking anywhere else closes it
-        flags = Qt.Popup | Qt.FramelessWindowHint
-        self.setWindowFlags(flags)
+        self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
         self.setLayout(QVBoxLayout())
 
         self.frame = QFrame()
@@ -125,7 +126,7 @@ class QtPopup(QDialog):
             assert len(position) == 4, '`position` argument must have length 4'
             left, top, width, height = position
         else:
-            raise TypeError(
+            raise ValueError(
                 trans._(
                     "Wrong type of position {position}",
                     deferred=True,
@@ -158,7 +159,7 @@ class QtPopup(QDialog):
         event : qtpy.QtCore.QEvent
             Event from the Qt context.
         """
-        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
             self.close()
             return
         super().keyPressEvent(event)

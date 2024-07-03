@@ -1,32 +1,16 @@
-import contextlib
-from typing import TYPE_CHECKING
-
 import numpy as np
 from qtpy.QtCore import Qt, Slot
 from qtpy.QtWidgets import QButtonGroup, QCheckBox, QComboBox, QHBoxLayout
 
-from napari._qt.layer_controls.qt_layer_controls_base import QtLayerControls
-from napari._qt.utils import (
-    qt_signals_blocked,
-    set_widgets_enabled_with_opacity,
-)
-from napari._qt.widgets._slider_compat import QSlider
-from napari._qt.widgets.qt_color_swatch import QColorSwatchEdit
-from napari._qt.widgets.qt_mode_buttons import (
-    QtModePushButton,
-    QtModeRadioButton,
-)
-from napari.layers.points._points_constants import (
-    SYMBOL_TRANSLATION,
-    SYMBOL_TRANSLATION_INVERTED,
-    Mode,
-)
-from napari.utils.action_manager import action_manager
-from napari.utils.events import disconnect_events
-from napari.utils.translations import trans
-
-if TYPE_CHECKING:
-    import napari.layers
+from ...layers.points._points_constants import SYMBOL_TRANSLATION, Mode
+from ...utils.action_manager import action_manager
+from ...utils.events import disconnect_events
+from ...utils.translations import trans
+from ..utils import disable_with_opacity, qt_signals_blocked
+from ..widgets._slider_compat import QSlider
+from ..widgets.qt_color_swatch import QColorSwatchEdit
+from ..widgets.qt_mode_buttons import QtModePushButton, QtModeRadioButton
+from .qt_layer_controls_base import QtLayerControls
 
 
 class QtPointsControls(QtLayerControls):
@@ -45,10 +29,16 @@ class QtPointsControls(QtLayerControls):
         Button group of points layer modes (ADD, PAN_ZOOM, SELECT).
     delete_button : qtpy.QtWidgets.QtModePushButton
         Button to delete points from layer.
-    edgeColorEdit : QColorSwatchEdit
-        Widget to select display color for shape edges.
-    faceColorEdit : QColorSwatchEdit
-        Widget to select display color for shape faces.
+    edgeColorSwatch : qtpy.QtWidgets.QFrame
+        Color swatch showing shapes edge display color.
+    edgeComboBox : qtpy.QtWidgets.QComboBox
+        Dropdown widget to select display color for shape edges.
+    faceColorSwatch : qtpy.QtWidgets.QFrame
+        Color swatch showing shapes face display color.
+    faceComboBox : qtpy.QtWidgets.QComboBox
+        Dropdown widget to select display color for shape faces.
+    grid_layout : qtpy.QtWidgets.QGridLayout
+        Layout of Qt widget controls for the layer.
     layer : napari.layers.Points
         An instance of a napari Points layer.
     outOfSliceCheckBox : qtpy.QtWidgets.QCheckBox
@@ -69,17 +59,15 @@ class QtPointsControls(QtLayerControls):
         Points mode must be one of: ADD, PAN_ZOOM, or SELECT.
     """
 
-    layer: 'napari.layers.Points'
-
-    def __init__(self, layer) -> None:
+    def __init__(self, layer):
         super().__init__(layer)
 
         self.layer.events.mode.connect(self._on_mode_change)
         self.layer.events.out_of_slice_display.connect(
             self._on_out_of_slice_display_change
         )
-        self.layer.events.symbol.connect(self._on_current_symbol_change)
-        self.layer.events.size.connect(self._on_current_size_change)
+        self.layer.events.symbol.connect(self._on_symbol_change)
+        self.layer.events.size.connect(self._on_size_change)
         self.layer.events.current_edge_color.connect(
             self._on_current_edge_color_change
         )
@@ -92,30 +80,22 @@ class QtPointsControls(QtLayerControls):
         self.layer._face.events.current_color.connect(
             self._on_current_face_color_change
         )
-        self.layer.events.current_symbol.connect(
-            self._on_current_symbol_change
-        )
-        self.layer.events.editable.connect(self._on_editable_or_visible_change)
-        self.layer.events.visible.connect(self._on_editable_or_visible_change)
+        self.layer.events.editable.connect(self._on_editable_change)
         self.layer.text.events.visible.connect(self._on_text_visibility_change)
 
-        sld = QSlider(Qt.Orientation.Horizontal)
+        sld = QSlider(Qt.Horizontal)
         sld.setToolTip(
             trans._(
                 "Change the size of currently selected points and any added afterwards."
             )
         )
-        sld.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        sld.setFocusPolicy(Qt.NoFocus)
         sld.setMinimum(1)
-        if self.layer.size.size:
-            max_value = max(100, int(np.max(self.layer.size)) + 1)
-        else:
-            max_value = 100
-        sld.setMaximum(max_value)
+        sld.setMaximum(100)
         sld.setSingleStep(1)
         value = self.layer.current_size
         sld.setValue(int(value))
-        sld.valueChanged.connect(self.changeCurrentSize)
+        sld.valueChanged.connect(self.changeSize)
         self.sizeSlider = sld
 
         self.faceColorEdit = QColorSwatchEdit(
@@ -126,33 +106,27 @@ class QtPointsControls(QtLayerControls):
             initial_color=self.layer.current_edge_color,
             tooltip=trans._('click to set current edge color'),
         )
-        self.faceColorEdit.color_changed.connect(self.changeCurrentFaceColor)
-        self.edgeColorEdit.color_changed.connect(self.changeCurrentEdgeColor)
+        self.faceColorEdit.color_changed.connect(self.changeFaceColor)
+        self.edgeColorEdit.color_changed.connect(self.changeEdgeColor)
 
-        sym_cb = QComboBox()
-        sym_cb.setToolTip(
-            trans._(
-                "Change the symbol of currently selected points and any added afterwards."
-            )
-        )
+        symbol_comboBox = QComboBox()
         current_index = 0
-        for index, (symbol_string, text) in enumerate(
-            SYMBOL_TRANSLATION.items()
-        ):
-            symbol_string = symbol_string.value
-            sym_cb.addItem(text, symbol_string)
+        for index, (data, text) in enumerate(SYMBOL_TRANSLATION.items()):
+            data = data.value
+            symbol_comboBox.addItem(text, data)
 
-            if symbol_string == self.layer.current_symbol:
+            if data == self.layer.symbol:
                 current_index = index
 
-        sym_cb.setCurrentIndex(current_index)
-        sym_cb.currentTextChanged.connect(self.changeCurrentSymbol)
-        self.symbolComboBox = sym_cb
+        symbol_comboBox.setCurrentIndex(current_index)
+        symbol_comboBox.activated[str].connect(self.changeSymbol)
+        self.symbolComboBox = symbol_comboBox
 
-        self.outOfSliceCheckBox = QCheckBox()
-        self.outOfSliceCheckBox.setToolTip(trans._('Out of slice display'))
-        self.outOfSliceCheckBox.setChecked(self.layer.out_of_slice_display)
-        self.outOfSliceCheckBox.stateChanged.connect(self.change_out_of_slice)
+        out_of_slice_cb = QCheckBox()
+        out_of_slice_cb.setToolTip(trans._('Out of slice display'))
+        out_of_slice_cb.setChecked(self.layer.out_of_slice_display)
+        out_of_slice_cb.stateChanged.connect(self.change_out_of_slice)
+        self.outOfSliceCheckBox = out_of_slice_cb
 
         self.select_button = QtModeRadioButton(
             layer,
@@ -168,7 +142,7 @@ class QtPointsControls(QtLayerControls):
         )
         self.panzoom_button = QtModeRadioButton(
             layer,
-            'pan',
+            'pan_zoom',
             Mode.PAN_ZOOM,
             checked=True,
         )
@@ -183,22 +157,16 @@ class QtPointsControls(QtLayerControls):
             'napari:delete_selected_points', self.delete_button
         )
 
-        self.textDispCheckBox = QCheckBox()
-        self.textDispCheckBox.setToolTip(trans._('toggle text visibility'))
-        self.textDispCheckBox.setChecked(self.layer.text.visible)
-        self.textDispCheckBox.stateChanged.connect(self.change_text_visibility)
-
-        self._EDIT_BUTTONS = (
-            self.select_button,
-            self.addition_button,
-            self.delete_button,
-        )
+        text_disp_cb = QCheckBox()
+        text_disp_cb.setToolTip(trans._('toggle text visibility'))
+        text_disp_cb.setChecked(self.layer.text.visible)
+        text_disp_cb.stateChanged.connect(self.change_text_visibility)
+        self.textDispCheckBox = text_disp_cb
 
         self.button_group = QButtonGroup(self)
         self.button_group.addButton(self.select_button)
         self.button_group.addButton(self.addition_button)
         self.button_group.addButton(self.panzoom_button)
-        self._on_editable_or_visible_change()
 
         button_row = QHBoxLayout()
         button_row.addStretch(1)
@@ -210,7 +178,7 @@ class QtPointsControls(QtLayerControls):
         button_row.setSpacing(4)
 
         self.layout().addRow(button_row)
-        self.layout().addRow(self.opacityLabel, self.opacitySlider)
+        self.layout().addRow(trans._('opacity:'), self.opacitySlider)
         self.layout().addRow(trans._('point size:'), self.sizeSlider)
         self.layout().addRow(trans._('blending:'), self.blendComboBox)
         self.layout().addRow(trans._('symbol:'), self.symbolComboBox)
@@ -244,10 +212,12 @@ class QtPointsControls(QtLayerControls):
             self.select_button.setChecked(True)
         elif mode == Mode.PAN_ZOOM:
             self.panzoom_button.setChecked(True)
-        elif mode != Mode.TRANSFORM:
+        elif mode == Mode.TRANSFORM:
+            pass
+        else:
             raise ValueError(trans._("Mode not recognized {mode}", mode=mode))
 
-    def changeCurrentSymbol(self, text):
+    def changeSymbol(self, text):
         """Change marker symbol of the points on the layer model.
 
         Parameters
@@ -255,10 +225,9 @@ class QtPointsControls(QtLayerControls):
         text : int
             Index of current marker symbol of points, eg: '+', '.', etc.
         """
-        with self.layer.events.symbol.blocker(self._on_current_symbol_change):
-            self.layer.current_symbol = SYMBOL_TRANSLATION_INVERTED[text]
+        self.layer.symbol = self.symbolComboBox.currentData()
 
-    def changeCurrentSize(self, value):
+    def changeSize(self, value):
         """Change size of points on the layer model.
 
         Parameters
@@ -266,10 +235,7 @@ class QtPointsControls(QtLayerControls):
         value : float
             Size of points.
         """
-        with self.layer.events.current_size.blocker(
-            self._on_current_size_change
-        ):
-            self.layer.current_size = value
+        self.layer.current_size = value
 
     def change_out_of_slice(self, state):
         """Toggleout of slice display of points layer.
@@ -279,11 +245,7 @@ class QtPointsControls(QtLayerControls):
         state : QCheckBox
             Checkbox indicating whether to render out of slice.
         """
-        # needs cast to bool for Qt6
-        with self.layer.events.out_of_slice_display.blocker(
-            self._on_out_of_slice_display_change
-        ):
-            self.layer.out_of_slice_display = bool(state)
+        self.layer.out_of_slice_display = state == Qt.Checked
 
     def change_text_visibility(self, state):
         """Toggle the visibility of the text.
@@ -293,56 +255,41 @@ class QtPointsControls(QtLayerControls):
         state : QCheckBox
             Checkbox indicating if text is visible.
         """
-        with self.layer.text.events.visible.blocker(
-            self._on_text_visibility_change
-        ):
-            # needs cast to bool for Qt6
-            self.layer.text.visible = bool(state)
+        self.layer.text.visible = state == Qt.Checked
 
     def _on_text_visibility_change(self):
-        """Receive layer model text visibiltiy change event and update checkbox."""
-        with qt_signals_blocked(self.textDispCheckBox):
+        """Receive layer model text visibiltiy change change event and update checkbox."""
+        with self.layer.text.events.visible.blocker():
             self.textDispCheckBox.setChecked(self.layer.text.visible)
 
     def _on_out_of_slice_display_change(self):
         """Receive layer model out_of_slice_display change event and update checkbox."""
-        with qt_signals_blocked(self.outOfSliceCheckBox):
+        with self.layer.events.out_of_slice_display.blocker():
             self.outOfSliceCheckBox.setChecked(self.layer.out_of_slice_display)
 
-    def _on_current_symbol_change(self):
+    def _on_symbol_change(self):
         """Receive marker symbol change event and update the dropdown menu."""
-        with qt_signals_blocked(self.symbolComboBox):
+        with self.layer.events.symbol.blocker():
             self.symbolComboBox.setCurrentIndex(
-                self.symbolComboBox.findData(self.layer.current_symbol.value)
+                self.symbolComboBox.findData(self.layer.symbol)
             )
 
-    def _on_current_size_change(self):
+    def _on_size_change(self):
         """Receive layer model size change event and update point size slider."""
-        with qt_signals_blocked(self.sizeSlider):
+        with self.layer.events.size.blocker():
             value = self.layer.current_size
-            min_val = min(value) if isinstance(value, list) else value
-            max_val = max(value) if isinstance(value, list) else value
-            if min_val < self.sizeSlider.minimum():
-                self.sizeSlider.setMinimum(max(1, int(min_val - 1)))
-            if max_val > self.sizeSlider.maximum():
-                self.sizeSlider.setMaximum(int(max_val + 1))
-            with contextlib.suppress(TypeError):
-                self.sizeSlider.setValue(int(value))
+            self.sizeSlider.setValue(int(value))
 
     @Slot(np.ndarray)
-    def changeCurrentFaceColor(self, color: np.ndarray):
+    def changeFaceColor(self, color: np.ndarray):
         """Update face color of layer model from color picker user input."""
-        with self.layer.events.current_face_color.blocker(
-            self._on_current_face_color_change
-        ):
+        with self.layer.events.current_face_color.blocker():
             self.layer.current_face_color = color
 
     @Slot(np.ndarray)
-    def changeCurrentEdgeColor(self, color: np.ndarray):
+    def changeEdgeColor(self, color: np.ndarray):
         """Update edge color of layer model from color picker user input."""
-        with self.layer.events.current_edge_color.blocker(
-            self._on_current_edge_color_change
-        ):
+        with self.layer.events.current_edge_color.blocker():
             self.layer.current_edge_color = color
 
     def _on_current_face_color_change(self):
@@ -355,15 +302,12 @@ class QtPointsControls(QtLayerControls):
         with qt_signals_blocked(self.edgeColorEdit):
             self.edgeColorEdit.setColor(self.layer.current_edge_color)
 
-    def _on_ndisplay_changed(self):
-        self.layer.editable = not (self.layer.ndim == 2 and self.ndisplay == 3)
-
-    def _on_editable_or_visible_change(self):
-        """Receive layer model editable/visible change event & enable/disable buttons."""
-        set_widgets_enabled_with_opacity(
+    def _on_editable_change(self):
+        """Receive layer model editable change event & enable/disable buttons."""
+        disable_with_opacity(
             self,
-            self._EDIT_BUTTONS,
-            self.layer.editable and self.layer.visible,
+            ['select_button', 'addition_button', 'delete_button'],
+            self.layer.editable,
         )
 
     def close(self):

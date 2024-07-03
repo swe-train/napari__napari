@@ -3,7 +3,7 @@ from typing import Optional, Union
 
 import numpy as np
 from qtpy.QtCore import QEvent, Qt, Signal, Slot
-from qtpy.QtGui import QColor, QKeyEvent, QMouseEvent
+from qtpy.QtGui import QColor, QKeyEvent
 from qtpy.QtWidgets import (
     QColorDialog,
     QCompleter,
@@ -15,14 +15,14 @@ from qtpy.QtWidgets import (
 )
 from vispy.color import get_color_dict
 
-from napari._qt.dialogs.qt_modal import QtPopup
-from napari.utils.colormaps.colormap_utils import ColorType
-from napari.utils.colormaps.standardize_color import (
+from ...utils.colormaps.colormap_utils import ColorType
+from ...utils.colormaps.standardize_color import (
     hex_to_name,
     rgb_to_hex,
     transform_color,
 )
-from napari.utils.translations import trans
+from ...utils.translations import trans
+from ..dialogs.qt_modal import QtPopup
 
 # matches any 3- or 4-tuple of int or float, with or without parens
 # captures the numbers into groups.
@@ -78,7 +78,7 @@ class QColorSwatchEdit(QWidget):
         *,
         initial_color: Optional[AnyColorType] = None,
         tooltip: Optional[str] = None,
-    ) -> None:
+    ):
         super().__init__(parent=parent)
         self.setObjectName('QColorSwatchEdit')
 
@@ -150,11 +150,11 @@ class QColorSwatch(QFrame):
         parent: Optional[QWidget] = None,
         tooltip: Optional[str] = None,
         initial_color: Optional[ColorType] = None,
-    ) -> None:
+    ):
         super().__init__(parent)
         self.setObjectName('colorSwatch')
-        self.setToolTip(tooltip or trans._('click to set color'))
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip(tooltip or trans.__('click to set color'))
+        self.setCursor(Qt.PointingHandCursor)
 
         self.color_changed.connect(self._update_swatch_style)
         self._color: np.ndarray = TRANSPARENT
@@ -169,12 +169,12 @@ class QColorSwatch(QFrame):
     @Slot(np.ndarray)
     def _update_swatch_style(self, color: np.ndarray) -> None:
         """Convert the current color to rgba() string and update appearance."""
-        rgba = f'rgba({",".join(str(int(x * 255)) for x in self._color)})'
+        rgba = f'rgba({",".join(map(lambda x: str(int(x*255)), self._color))})'
         self.setStyleSheet('#colorSwatch {background-color: ' + rgba + ';}')
 
-    def mouseReleaseEvent(self, event: QMouseEvent):
+    def mouseReleaseEvent(self, event: QEvent):
         """Show QColorPopup picker when the user clicks on the swatch."""
-        if event.button() == Qt.MouseButton.LeftButton:
+        if event.button() == Qt.LeftButton:
             initial = QColor(*(255 * self._color).astype('int'))
             popup = QColorPopup(self, initial)
             popup.colorSelected.connect(self.setColor)
@@ -198,10 +198,8 @@ class QColorSwatch(QFrame):
                 return self.color_changed.emit(self._color)
         emit = np.any(self._color != _color)
         self._color = _color
-        if emit or np.array_equiv(_color, TRANSPARENT):
+        if emit or np.all(_color == TRANSPARENT):
             self.color_changed.emit(_color)
-            return None
-        return None
 
 
 class QColorLineEdit(QLineEdit):
@@ -213,9 +211,9 @@ class QColorLineEdit(QLineEdit):
         The parent widget, by default None
     """
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self._compl = QCompleter([*get_color_dict(), "transparent"])
+        self._compl = QCompleter(list(get_color_dict()) + ['transparent'])
         self._compl.setCompletionMode(QCompleter.InlineCompletion)
         self.setCompleter(self._compl)
         self.setTextMargins(2, 2, 2, 2)
@@ -238,7 +236,7 @@ class QColorLineEdit(QLineEdit):
 
 
 class CustomColorDialog(QColorDialog):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setObjectName('CustomColorDialog')
 
@@ -308,9 +306,8 @@ class QColorPopup(QtPopup):
         event : QKeyEvent
             The keypress event that triggered this method.
         """
-        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
             return self.color_dialog.accept()
-        if event.key() == Qt.Key.Key_Escape:
+        if event.key() == Qt.Key_Escape:
             return self.color_dialog.reject()
         self.color_dialog.keyPressEvent(event)
-        return None

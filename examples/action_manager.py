@@ -2,7 +2,6 @@
 Action manager
 ==============
 
-.. tags:: gui, experimental
 """
 from random import shuffle
 
@@ -45,13 +44,13 @@ layer_buttons = viewer.window.qt_viewer.layerButtons
 # Button do not need to do anything, just need to be pretty; all the action
 # binding and (un) binding will be done with the action manager, idem for
 # setting the tooltip.
-rot_button = QtViewerPushButton('warning')
+rot_button = QtViewerPushButton(None, 'warning')
 layer_buttons.layout().insertWidget(3, rot_button)
 
 
 def register_action():
     # Here we pass ViewerModel as the KeymapProvider as we want it to handle the shortcuts.
-    # we could also pass none and bind the shortcuts at the window level - though we
+    # we could also pass none and bind the shortcuts at the window level – though we
     # are trying to not change the KeymapProvider API too much for now.
     # we give an action name to the action for configuration purposes as we need
     # it to be storable in json.

@@ -2,13 +2,10 @@
 Multithreading simple
 =====================
 
-.. tags:: interactivity
 """
 
+from qtpy.QtWidgets import QApplication, QWidget, QHBoxLayout, QLabel
 import time
-
-from qtpy.QtWidgets import QApplication, QHBoxLayout, QLabel, QWidget
-
 from napari.qt import thread_worker
 
 

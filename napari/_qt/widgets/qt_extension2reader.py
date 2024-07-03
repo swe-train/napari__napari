@@ -1,5 +1,3 @@
-import os
-
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
     QComboBox,
@@ -20,8 +18,9 @@ from napari.plugins.utils import (
     get_filename_patterns_for_reader,
     get_potential_readers,
 )
-from napari.settings import get_settings
-from napari.utils.translations import trans
+
+from ...settings import get_settings
+from ...utils.translations import trans
 
 
 class Extension2ReaderTable(QWidget):
@@ -31,9 +30,7 @@ class Extension2ReaderTable(QWidget):
 
     valueChanged = Signal(int)
 
-    def __init__(
-        self, parent=None, npe2_readers=None, npe1_readers=None
-    ) -> None:
+    def __init__(self, parent=None, npe2_readers=None, npe1_readers=None):
         super().__init__(parent=parent)
 
         npe2, npe1 = get_all_readers()
@@ -53,7 +50,16 @@ class Extension2ReaderTable(QWidget):
 
         instructions = QLabel(
             trans._(
-                'Enter a filename pattern to associate with a reader e.g. "*.tif" for all TIFF files.  Available readers will be filtered to those compatible with your pattern. Hover over a reader to see what patterns it accepts. \n\nYou can save a preference for a specific folder by listing the folder name with a "/" at the end (for example, "/test_images/"). \n\nFor documentation on valid filename patterns, see https://docs.python.org/3/library/fnmatch.html'
+                'Enter a filename pattern to associate with a reader e.g. "*.tif" for all TIFF files.'
+            )
+            + trans._(
+                'Available readers will be filtered to those compatible with your pattern. Hover over a reader to see what patterns it accepts.'
+            )
+            + trans._(
+                '\n\nPreference saving for folder readers is not supported, so these readers are not shown.'
+            )
+            + trans._(
+                '\n\nFor documentation on valid filename patterns, see https://docs.python.org/3/library/fnmatch.html'
             )
         )
         instructions.setWordWrap(True)
@@ -105,7 +111,7 @@ class Extension2ReaderTable(QWidget):
 
         self._fn_pattern_edit = QLineEdit()
         self._fn_pattern_edit.setPlaceholderText(
-            trans._("Start typing filename pattern...")
+            "Start typing filename pattern..."
         )
         self._fn_pattern_edit.textChanged.connect(
             self._filter_compatible_readers
@@ -121,7 +127,7 @@ class Extension2ReaderTable(QWidget):
         ):
             self._add_reader_choice(i, plugin_name, display_name)
 
-        add_btn = QPushButton(trans._('Add'))
+        add_btn = QPushButton('Add')
         add_btn.setToolTip(trans._('Save reader preference for pattern'))
         add_btn.clicked.connect(self._save_new_preference)
 
@@ -140,7 +146,7 @@ class Extension2ReaderTable(QWidget):
     def _display_no_preferences_found(self):
         self._table.setRowCount(1)
         item = QTableWidgetItem(trans._('No filename preferences found.'))
-        item.setFlags(Qt.ItemFlag.NoItemFlags)
+        item.setFlags(Qt.NoItemFlags)
         self._table.setItem(self._fn_pattern_col, 0, item)
 
     def _add_reader_choice(self, i, plugin_name, display_name):
@@ -153,15 +159,14 @@ class Extension2ReaderTable(QWidget):
 
         self._new_reader_dropdown.addItem(display_name, plugin_name)
         if '*' in reader_patterns:
-            tooltip_text = trans._('Accepts all')
+            tooltip_text = 'Accepts all'
         else:
-            reader_patterns_formatted = ', '.join(sorted(reader_patterns))
-            tooltip_text = trans._(
-                'Accepts: {reader_patterns_formatted}',
-                reader_patterns_formatted=reader_patterns_formatted,
+            reader_patterns_formatted = ', '.join(
+                sorted(list(reader_patterns))
             )
+            tooltip_text = f'Accepts: {reader_patterns_formatted}'
         self._new_reader_dropdown.setItemData(
-            i, tooltip_text, role=Qt.ItemDataRole.ToolTipRole
+            i, tooltip_text, role=Qt.ToolTipRole
         )
 
     def _filter_compatible_readers(self, new_pattern):
@@ -170,27 +175,23 @@ class Extension2ReaderTable(QWidget):
 
         readers = self._npe2_readers.copy()
         to_delete = []
-        try:
-            compatible_readers = get_potential_readers(new_pattern)
-        except ValueError as e:
-            if "empty name" not in str(e):
-                raise
-            compatible_readers = {}
-        for plugin_name in readers:
+
+        compatible_readers = get_potential_readers(new_pattern)
+        for plugin_name, display_name in readers.items():
             if plugin_name not in compatible_readers:
                 to_delete.append(plugin_name)
 
         for reader in to_delete:
             del readers[reader]
-
         readers.update(self._npe1_readers)
 
-        for i, (plugin_name, display_name) in enumerate(
-            sorted(readers.items())
-        ):
-            self._add_reader_choice(i, plugin_name, display_name)
-        if self._new_reader_dropdown.count() == 0:
-            self._new_reader_dropdown.addItem(trans._("None available"))
+        if not readers:
+            self._new_reader_dropdown.addItem("None available")
+        else:
+            for i, (plugin_name, display_name) in enumerate(
+                sorted(readers.items())
+            ):
+                self._add_reader_choice(i, plugin_name, display_name)
 
     def _save_new_preference(self, event):
         """Save current preference to settings and show in table"""
@@ -234,9 +235,7 @@ class Extension2ReaderTable(QWidget):
 
         self._table.insertRow(last_row)
         item = QTableWidgetItem(fn_pattern)
-        if fn_pattern.endswith(os.sep):
-            item.setTextAlignment(Qt.AlignmentFlag.AlignLeft)
-        item.setFlags(Qt.ItemFlag.NoItemFlags)
+        item.setFlags(Qt.NoItemFlags)
         self._table.setItem(last_row, self._fn_pattern_col, item)
 
         plugin_widg = QWidget()

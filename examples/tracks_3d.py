@@ -2,12 +2,10 @@
 Tracks 3D
 =========
 
-.. tags:: visualization-advanced
 """
 
-import numpy as np
-
 import napari
+import numpy as np
 
 
 def lissajous(t):

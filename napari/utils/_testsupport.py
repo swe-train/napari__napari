@@ -1,10 +1,10 @@
+import collections
 import gc
 import os
 import sys
 import warnings
 from contextlib import suppress
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Tuple
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 from weakref import WeakSet
 
@@ -14,10 +14,6 @@ if TYPE_CHECKING:
     from pytest import FixtureRequest
 
 _SAVE_GRAPH_OPNAME = "--save-leaked-object-graph"
-
-
-def _empty(*_, **__):
-    """Empty function for mocking"""
 
 
 def pytest_addoption(parser):
@@ -47,10 +43,10 @@ def fail_obj_graph(Klass):
 
     try:
         import objgraph
-    except ModuleNotFoundError:
+    except ImportError:
         return
 
-    if len(Klass._instances) != 0:
+    if not len(Klass._instances) == 0:
         global COUNTER
         COUNTER += 1
         import gc
@@ -78,6 +74,8 @@ def napari_plugin_manager(monkeypatch):
     Or, to re-enable global discovery, use:
     `napari_plugin_manager.discovery_blocker.stop()`
     """
+    from unittest.mock import patch
+
     import napari
     import napari.plugins.io
     from napari.plugins._plugin_manager import NapariPluginManager
@@ -88,8 +86,11 @@ def napari_plugin_manager(monkeypatch):
     # get this test version for the duration of the test.
     monkeypatch.setattr(napari.plugins, 'plugin_manager', pm)
     monkeypatch.setattr(napari.plugins.io, 'plugin_manager', pm)
-    with suppress(AttributeError):
+    try:
         monkeypatch.setattr(napari._qt.qt_main_window, 'plugin_manager', pm)
+    except AttributeError:  # headless tests
+        pass
+
     # prevent discovery of plugins in the environment
     # you can still use `pm.register` to explicitly register something.
     pm.discovery_blocker = patch.object(pm, 'discover')
@@ -99,40 +100,9 @@ def napari_plugin_manager(monkeypatch):
     pm.discovery_blocker.stop()
 
 
-GCPASS = 0
-
-
-@pytest.fixture(autouse=True)
-def clean_themes():
-    from napari.utils import theme
-
-    themes = set(theme.available_themes())
-    yield
-    for name in theme.available_themes():
-        if name not in themes:
-            del theme._themes[name]
-
-
-@pytest.hookimpl(tryfirst=True, hookwrapper=True)
-def pytest_runtest_makereport(item, call):
-    # https://docs.pytest.org/en/latest/example/simple.html#making-test-result-information-available-in-fixtures
-    # execute all other hooks to obtain the report object
-    outcome = yield
-    rep = outcome.get_result()
-
-    # set a report attribute for each phase of a call, which can
-    # be "setup", "call", "teardown"
-
-    setattr(item, f"rep_{rep.when}", rep)
-
-
 @pytest.fixture
 def make_napari_viewer(
-    qtbot,
-    request: 'FixtureRequest',
-    napari_plugin_manager,
-    monkeypatch,
-    clean_themes,
+    qtbot, request: 'FixtureRequest', napari_plugin_manager
 ):
     """A fixture function that creates a napari viewer for use in testing.
 
@@ -173,21 +143,13 @@ def make_napari_viewer(
     >>> def test_something_with_strict_qt_tests(make_napari_viewer):
     ...     viewer = make_napari_viewer(strict_qt=True)
     """
-    from qtpy.QtWidgets import QApplication, QWidget
+    from qtpy.QtWidgets import QApplication
 
     from napari import Viewer
-    from napari._qt._qapp_model.qactions import init_qactions
     from napari._qt.qt_viewer import QtViewer
-    from napari.plugins import _initialize_plugins
     from napari.settings import get_settings
 
-    global GCPASS
-    GCPASS += 1
-
-    if GCPASS % 50 == 0:
-        gc.collect()
-    else:
-        gc.collect(1)
+    gc.collect()
 
     _do_not_inline_below = len(QtViewer._instances)
     # # do not inline to avoid pytest trying to compute repr of expression.
@@ -205,44 +167,22 @@ def make_napari_viewer(
     settings = get_settings()
     settings.reset()
 
-    _initialize_plugins.cache_clear()
-    init_qactions.cache_clear()
-
     viewers: WeakSet[Viewer] = WeakSet()
 
-    # may be overridden by using the parameter `strict_qt`
+    # may be overridden by using `make_napari_viewer(strict=True)`
     _strict = False
 
     initial = QApplication.topLevelWidgets()
     prior_exception = getattr(sys, 'last_value', None)
     is_internal_test = request.module.__name__.startswith("napari.")
 
-    # disable throttling cursor event in tests
-    monkeypatch.setattr(
-        "napari._qt.qt_main_window._QtMainWindow._throttle_cursor_to_status_connection",
-        _empty,
-    )
-
-    if "enable_console" not in request.keywords:
-
-        def _dummy_widget(*_):
-            w = QWidget()
-            w._update_theme = _empty
-            return w
-
-        monkeypatch.setattr(
-            "napari._qt.qt_viewer.QtViewer._get_console", _dummy_widget
-        )
-
     def actual_factory(
         *model_args,
         ViewerClass=Viewer,
-        strict_qt=None,
+        strict_qt=is_internal_test or os.getenv("NAPARI_STRICT_QT"),
         block_plugin_discovery=True,
         **model_kwargs,
     ):
-        if strict_qt is None:
-            strict_qt = is_internal_test or os.getenv("NAPARI_STRICT_QT")
         nonlocal _strict
         _strict = strict_qt
 
@@ -273,34 +213,24 @@ def make_napari_viewer(
         else:
             viewer.close()
 
-    if GCPASS % 50 == 0 or len(QtViewer._instances):
-        gc.collect()
-    else:
-        gc.collect(1)
+    gc.collect()
 
     if request.config.getoption(_SAVE_GRAPH_OPNAME):
         fail_obj_graph(QtViewer)
 
-    if request.node.rep_call.failed:
-        # IF test failed do not check for leaks
-        QtViewer._instances.clear()
-
     _do_not_inline_below = len(QtViewer._instances)
-
-    QtViewer._instances.clear()  # clear to prevent fail of next test
-
     # do not inline to avoid pytest trying to compute repr of expression.
     # it fails if C++ object gone but not Python object.
     assert _do_not_inline_below == 0
 
     # only check for leaked widgets if an exception was raised during the test,
-    # and "strict" mode was used.
+    # or "strict" mode was used.
     if _strict and getattr(sys, 'last_value', None) is prior_exception:
         QApplication.processEvents()
         leak = set(QApplication.topLevelWidgets()).difference(initial)
         # still not sure how to clean up some of the remaining vispy
         # vispy.app.backends._qt.CanvasBackendDesktop widgets...
-        if any(n.__class__.__name__ != 'CanvasBackendDesktop' for n in leak):
+        if any([n.__class__.__name__ != 'CanvasBackendDesktop' for n in leak]):
             # just a warning... but this can be converted to test errors
             # in pytest with `-W error`
             msg = f"""The following Widgets leaked!: {leak}.
@@ -322,58 +252,23 @@ def make_napari_viewer(
 
 
 @pytest.fixture
-def make_napari_viewer_proxy(make_napari_viewer, monkeypatch):
-    """Fixture that returns a function for creating a napari viewer wrapped in proxy.
-    Use in the same way like `make_napari_viewer` fixture.
-
-    Parameters
-    ----------
-    make_napari_viewer : fixture
-        The make_napari_viewer fixture.
-
-    Returns
-    -------
-    function
-        A function that creates a napari viewer.
-    """
-    from napari.utils._proxies import PublicOnlyProxy
-
-    proxies = []
-
-    def actual_factory(*model_args, ensure_main_thread=True, **model_kwargs):
-        monkeypatch.setenv(
-            "NAPARI_ENSURE_PLUGIN_MAIN_THREAD", str(ensure_main_thread)
-        )
-        viewer = make_napari_viewer(*model_args, **model_kwargs)
-        proxies.append(PublicOnlyProxy(viewer))
-        return proxies[-1]
-
-    proxies.clear()
-
-    yield actual_factory
-
-
-@pytest.fixture
 def MouseEvent():
     """Create a subclass for simulating vispy mouse events.
 
     Returns
     -------
     Event : Type
-        A new dataclass named Event that can be used to create an
-        object with fields "type" and "is_dragging".
+        A new tuple subclass named Event that can be used to create a
+        NamedTuple object with fields "type" and "is_dragging".
     """
-
-    @dataclass
-    class Event:
-        type: str
-        position: Tuple[float]
-        is_dragging: bool = False
-        dims_displayed: Tuple[int] = (0, 1)
-        dims_point: List[float] = None
-        view_direction: List[int] = None
-        pos: List[int] = (0, 0)
-        button: int = None
-        handled: bool = False
-
-    return Event
+    return collections.namedtuple(
+        'Event',
+        field_names=[
+            'type',
+            'is_dragging',
+            'position',
+            'view_direction',
+            'dims_displayed',
+            'dims_point',
+        ],
+    )

@@ -22,18 +22,16 @@ def update_text(
         A layer with text.
     """
 
-    ndisplay = layer._slice_input.ndisplay
+    ndisplay = layer._ndisplay
 
     # Vispy always needs non-empty values and coordinates, so if a layer
     # effectively has no visible text then return single dummy data.
     # This also acts as a minor optimization.
     if _has_visible_text(layer):
         text_values = layer._view_text
-        colors = layer._view_text_color
         coords, anchor_x, anchor_y = layer._view_text_coords
     else:
         text_values = np.array([''])
-        colors = np.zeros((4,), np.float32)
         coords = np.zeros((1, ndisplay))
         anchor_x = 'center'
         anchor_y = 'center'
@@ -58,7 +56,7 @@ def update_text(
 
     text_manager = layer.text
     node.rotation = text_manager.rotation
-    node.color = colors
+    node.color = text_manager.color
     node.font_size = text_manager.size
 
 

@@ -1,12 +1,8 @@
-from itertools import permutations
-
 import numpy as np
 import pandas as pd
 import pytest
+from pydantic import ValidationError
 
-from napari._pydantic_compat import ValidationError
-from napari._tests.utils import assert_colors_equal
-from napari.layers.utils._slice_input import _SliceInput, _ThickNDSlice
 from napari.layers.utils.string_encoding import (
     ConstantStringEncoding,
     FormatStringEncoding,
@@ -156,24 +152,18 @@ def test_equality():
     classes = np.array(['A', 'B', 'C'])
     properties = {'class': classes, 'confidence': np.array([0.5, 0.3, 1])}
     text_manager_1 = TextManager(
-        text=text,
-        n_text=n_text,
-        properties=properties,
-        color='red',
+        text=text, n_text=n_text, properties=properties, color='red'
     )
     text_manager_2 = TextManager(
-        text=text,
-        n_text=n_text,
-        properties=properties,
-        color='red',
+        text=text, n_text=n_text, properties=properties, color='red'
     )
 
     assert text_manager_1 == text_manager_2
-    assert text_manager_1 == text_manager_2
+    assert not (text_manager_1 != text_manager_2)
 
     text_manager_2.color = 'blue'
     assert text_manager_1 != text_manager_2
-    assert text_manager_1 != text_manager_2
+    assert not (text_manager_1 == text_manager_2)
 
 
 @pytest.mark.filterwarnings('ignore::DeprecationWarning')
@@ -308,15 +298,6 @@ def test_from_layer():
     assert not text_manager.visible
 
 
-def test_from_layer_with_no_text():
-    features = pd.DataFrame({})
-    text_manager = TextManager._from_layer(
-        text=None,
-        features=features,
-    )
-    assert text_manager.string == ConstantStringEncoding(constant='')
-
-
 def test_update_from_layer():
     text = {
         'string': 'class',
@@ -392,6 +373,13 @@ def test_update_from_layer_with_warning_only_one_emitted():
         )
 
     assert len(record) == 1
+
+
+def test_init_with_no_string():
+    text_manager = TextManager(string=None)
+
+    assert text_manager.string == ConstantStringEncoding(constant='')
+    np.testing.assert_array_equal(text_manager.values, '')
 
 
 def test_init_with_constant_string():
@@ -554,225 +542,3 @@ def test_view_text_with_constant_text():
     # because assert_array_equal broadcasts scalars automatically
     assert len(actual) == 2
     np.testing.assert_array_equal(actual, ['A', 'A'])
-
-
-def test_init_with_constant_color():
-    color = {'constant': 'red'}
-    features = pd.DataFrame(index=range(3))
-
-    text_manager = TextManager(color=color, features=features)
-
-    actual = text_manager.color._values
-    assert_colors_equal(actual, 'red')
-
-
-def test_init_with_manual_color():
-    color = ['red', 'green', 'blue']
-    features = pd.DataFrame({'class': ['A', 'B', 'C']})
-
-    text_manager = TextManager(color=color, features=features)
-
-    actual = text_manager.color._values
-    assert_colors_equal(actual, ['red', 'green', 'blue'])
-
-
-def test_init_with_derived_color():
-    color = {'feature': 'colors'}
-    features = pd.DataFrame({'colors': ['red', 'green', 'blue']})
-
-    text_manager = TextManager(color=color, features=features)
-
-    actual = text_manager.color._values
-    assert_colors_equal(actual, ['red', 'green', 'blue'])
-
-
-def test_init_with_derived_color_missing_feature_then_use_fallback():
-    color = {'feature': 'not_a_feature', 'fallback': 'cyan'}
-    features = pd.DataFrame({'colors': ['red', 'green', 'blue']})
-
-    with pytest.warns(RuntimeWarning):
-        text_manager = TextManager(color=color, features=features)
-
-    actual = text_manager.color._values
-    assert_colors_equal(actual, ['cyan'] * 3)
-
-
-def test_apply_with_constant_color():
-    color = {'constant': 'red'}
-    features = pd.DataFrame({'class': ['A', 'B', 'C']})
-    text_manager = TextManager(color=color, features=features)
-
-    features = pd.DataFrame({'class': ['A', 'B', 'C', 'D', 'E']})
-    text_manager.apply(features)
-
-    actual = text_manager.color._values
-    assert_colors_equal(actual, 'red')
-
-
-def test_apply_with_manual_color_then_use_default():
-    color = {
-        'array': ['red', 'green', 'blue'],
-        'default': 'yellow',
-    }
-    features = pd.DataFrame({'class': ['A', 'B', 'C']})
-    text_manager = TextManager(color=color, features=features)
-
-    features = pd.DataFrame({'class': ['A', 'B', 'C', 'D', 'E']})
-    text_manager.apply(features)
-
-    actual = text_manager.color._values
-    assert_colors_equal(actual, ['red', 'green', 'blue', 'yellow', 'yellow'])
-
-
-def test_apply_with_derived_color():
-    color = {'feature': 'colors'}
-    features = pd.DataFrame({'colors': ['red', 'green', 'blue']})
-    text_manager = TextManager(color=color, features=features)
-
-    features = pd.DataFrame(
-        {'colors': ['red', 'green', 'blue', 'yellow', 'cyan']}
-    )
-    text_manager.apply(features)
-
-    actual = text_manager.color._values
-    assert_colors_equal(actual, ['red', 'green', 'blue', 'yellow', 'cyan'])
-
-
-def test_refresh_with_constant_color():
-    color = {'constant': 'red'}
-    features = pd.DataFrame(index=range(3))
-    text_manager = TextManager(color=color, features=features)
-
-    text_manager.color = {'constant': 'yellow'}
-    text_manager.refresh(features)
-
-    actual = text_manager.color._values
-    assert_colors_equal(actual, 'yellow')
-
-
-def test_refresh_with_manual_color():
-    color = ['red', 'green', 'blue']
-    features = pd.DataFrame(index=range(3))
-    text_manager = TextManager(color=color, features=features)
-
-    text_manager.color = ['green', 'cyan', 'yellow']
-    text_manager.refresh(features)
-
-    actual = text_manager.color._values
-    assert_colors_equal(actual, ['green', 'cyan', 'yellow'])
-
-
-def test_refresh_with_derived_color():
-    color = {'feature': 'colors'}
-    features = pd.DataFrame({'colors': ['red', 'green', 'blue']})
-    text_manager = TextManager(color=color, features=features)
-
-    features = pd.DataFrame({'colors': ['green', 'yellow', 'magenta']})
-    text_manager.refresh(features)
-
-    actual = text_manager.color._values
-    assert_colors_equal(actual, ['green', 'yellow', 'magenta'])
-
-
-def test_copy_paste_with_constant_color():
-    color = {'constant': 'blue'}
-    features = pd.DataFrame(index=range(5))
-    text_manager = TextManager(color=color, features=features)
-
-    # Use an index of 4 to ensure that constant color values, which are
-    # RGBA 4-vectors, are handled correctly when copied, unlike in a
-    # related bug:
-    # https://github.com/napari/napari/issues/5786
-    copied = text_manager._copy([0, 4])
-    text_manager._paste(**copied)
-
-    actual = text_manager.color._values
-    assert_colors_equal(actual, 'blue')
-
-
-def test_copy_paste_with_manual_color():
-    color = ['magenta', 'red', 'yellow']
-    features = pd.DataFrame(index=range(3))
-    text_manager = TextManager(color=color, features=features)
-
-    copied = text_manager._copy([0, 2])
-    text_manager._paste(**copied)
-
-    actual = text_manager.color._values
-    assert_colors_equal(
-        actual, ['magenta', 'red', 'yellow', 'magenta', 'yellow']
-    )
-
-
-def test_copy_paste_with_derived_color():
-    color = {'feature': 'colors'}
-    features = pd.DataFrame({'colors': ['green', 'red', 'magenta']})
-    text_manager = TextManager(color=color, features=features)
-
-    copied = text_manager._copy([0, 2])
-    text_manager._paste(**copied)
-
-    actual = text_manager.color._values
-    assert_colors_equal(
-        actual, ['green', 'red', 'magenta', 'green', 'magenta']
-    )
-
-
-@pytest.mark.parametrize(
-    ('ndim', 'ndisplay', 'translation'),
-    (
-        (2, 2, 0),  # 2D data and display, no translation
-        (2, 3, 0),  # 2D data and 3D display, no translation
-        (2, 2, 0),  # 3D data and display, no translation
-        (2, 2, 5.2),  # 2D data and display, constant translation
-        (2, 3, 5.2),  # 2D data and 3D display, constant translation
-        (2, 2, 5.2),  # 3D data and display, constant translation
-        (2, 2, [5.2, -3.2]),  # 2D data, display, translation
-        (2, 3, [5.2, -3.2]),  # 2D data, 3D display, 2D translation
-        (3, 3, [5.2, -3.2, 0.1]),  # 3D data, display, translation
-    ),
-)
-def test_compute_text_coords(ndim, ndisplay, translation):
-    """See https://github.com/napari/napari/issues/5111"""
-    num_points = 3
-    text_manager = TextManager(
-        features=pd.DataFrame(index=range(num_points)),
-        translation=translation,
-    )
-    np.random.seed(0)
-    # Cannot just use `rand(num_points, ndisplay)` because when
-    # ndim < ndisplay, we need to get ndim data which is what
-    # what layers are doing (e.g. see `Points._view_data`).
-    coords = np.random.rand(num_points, ndim)[-ndisplay:]
-
-    text_coords, _, _ = text_manager.compute_text_coords(
-        coords, ndisplay=ndisplay
-    )
-
-    expected_coords = coords + translation
-    np.testing.assert_equal(text_coords, expected_coords)
-
-
-@pytest.mark.parametrize(('order'), permutations((0, 1, 2)))
-def test_compute_text_coords_with_3D_data_2D_display(order):
-    """See https://github.com/napari/napari/issues/5111"""
-    num_points = 3
-    translation = np.array([5.2, -3.2, 0.1])
-    text_manager = TextManager(
-        features=pd.DataFrame(index=range(num_points)),
-        translation=translation,
-    )
-    slice_input = _SliceInput(
-        ndisplay=2, world_slice=_ThickNDSlice.make_full(ndim=3), order=order
-    )
-    np.random.seed(0)
-    coords = np.random.rand(num_points, slice_input.ndisplay)
-
-    text_coords, _, _ = text_manager.compute_text_coords(
-        coords,
-        ndisplay=slice_input.ndisplay,
-        order=slice_input.displayed,
-    )
-
-    expected_coords = coords + translation[slice_input.displayed]
-    np.testing.assert_equal(text_coords, expected_coords)

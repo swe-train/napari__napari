@@ -2,14 +2,13 @@ import warnings
 from typing import Optional, Tuple
 
 import numpy as np
-from qtpy.QtCore import Slot
 from qtpy.QtGui import QFont, QFontMetrics
-from qtpy.QtWidgets import QSizePolicy, QVBoxLayout, QWidget
+from qtpy.QtWidgets import QLineEdit, QSizePolicy, QVBoxLayout, QWidget
 
-from napari._qt.widgets.qt_dims_slider import QtDimSliderWidget
-from napari.components.dims import Dims
-from napari.settings._constants import LoopMode
-from napari.utils.translations import trans
+from ...components.dims import Dims
+from ...settings._constants import LoopMode
+from ...utils.translations import trans
+from .qt_dims_slider import QtDimSliderWidget
 
 
 class QtDims(QWidget):
@@ -30,7 +29,8 @@ class QtDims(QWidget):
         List of slider widgets.
     """
 
-    def __init__(self, dims: Dims, parent=None) -> None:
+    def __init__(self, dims: Dims, parent=None):
+
         super().__init__(parent=parent)
 
         self.SLIDERHEIGHT = 22
@@ -44,8 +44,8 @@ class QtDims(QWidget):
         # True / False if slider is or is not displayed
         self._displayed_sliders = []
 
+        self._play_ready = True  # False if currently awaiting a draw event
         self._animation_thread = None
-        self._animation_worker = None
 
         # Initialises the layout:
         layout = QVBoxLayout()
@@ -97,11 +97,15 @@ class QtDims(QWidget):
         self._resize_slice_labels()
 
     def _update_display(self):
-        """Updates display for all sliders."""
-        self.stop()
+        """
+        Updates display for all sliders.
+
+        The event parameter is there just to allow easy connection to signals,
+        without using `lambda event:`
+        """
         widgets = reversed(list(enumerate(self.slider_widgets)))
         nsteps = self.dims.nsteps
-        for axis, widget in widgets:
+        for (axis, widget) in widgets:
             if axis in self.dims.displayed or nsteps[axis] <= 1:
                 # Displayed dimensions correspond to non displayed sliders
                 self._displayed_sliders[axis] = False
@@ -115,11 +119,14 @@ class QtDims(QWidget):
         nsliders = np.sum(self._displayed_sliders)
         self.setMinimumHeight(nsliders * self.SLIDERHEIGHT)
         self._resize_slice_labels()
-        self._resize_axis_labels()
 
     def _update_nsliders(self):
-        """Updates the number of sliders based on the number of dimensions."""
-        self.stop()
+        """
+        Updates the number of sliders based on the number of dimensions.
+
+        The event parameter is there just to allow easy connection to signals,
+        without using `lambda event:`
+        """
         self._trim_sliders(0)
         self._create_sliders(self.dims.ndim)
         self._update_display()
@@ -130,36 +137,20 @@ class QtDims(QWidget):
 
     def _resize_axis_labels(self):
         """When any of the labels get updated, this method updates all label
-        widths to a minimum size. This allows the full label to be
-        visible at all times, with minimal space, without setting stretch on
-        the layout.
+        widths to the width of the longest label. This keeps the sliders
+        left-aligned and allows the full label to be visible at all times,
+        with minimal space, without setting stretch on the layout.
         """
-        displayed_labels = [
-            self.slider_widgets[idx].axis_label
-            for idx, displayed in enumerate(self._displayed_sliders)
-            if displayed
-        ]
-        if displayed_labels:
-            fm = self.fontMetrics()
-            # set maximum width to no more than 20% of slider width
-            maxwidth = int(self.slider_widgets[0].width() * 0.2)
-            # set new width to the width of the longest label being displayed
-            newwidth = max(
-                [
-                    int(fm.boundingRect(dlab.text()).width())
-                    for dlab in displayed_labels
-                ]
-            )
+        fm = QFontMetrics(QFont("", 0))
+        labels = self.findChildren(QLineEdit, 'axis_label')
+        newwidth = max(fm.boundingRect(lab.text()).width() for lab in labels)
 
-            for slider in self.slider_widgets:
-                labl = slider.axis_label
-                # here the average width of a character is used as base measure
-                # to add some extra width. We use 4 to take into account a
-                # space and the possible 3 dots (`...`) for elided text
-                margin_width = int(fm.averageCharWidth() * 4)
-                base_labl_width = min([newwidth, maxwidth])
-                labl_width = base_labl_width + margin_width
-                labl.setFixedWidth(labl_width)
+        if any(self._displayed_sliders):
+            # set maximum width to no more than 20% of slider width
+            maxwidth = self.slider_widgets[0].width() * 0.2
+            newwidth = min([newwidth, maxwidth])
+        for labl in labels:
+            labl.setFixedWidth(int(newwidth) + 10)
 
     def _resize_slice_labels(self):
         """When the size of any dimension changes, we want to resize all of the
@@ -192,10 +183,7 @@ class QtDims(QWidget):
         for slider_num in range(self.nsliders, number_of_sliders):
             dim_axis = number_of_sliders - slider_num - 1
             slider_widget = QtDimSliderWidget(self, dim_axis)
-            slider_widget.axis_label.textChanged.connect(
-                self._resize_axis_labels
-            )
-            slider_widget.size_changed.connect(self._resize_axis_labels)
+            slider_widget.axis_label_changed.connect(self._resize_axis_labels)
             slider_widget.play_button.play_requested.connect(self.play)
             self.layout().addWidget(slider_widget)
             self.slider_widgets.insert(0, slider_widget)
@@ -214,7 +202,7 @@ class QtDims(QWidget):
         """
         # remove extra sliders so that only number_of_sliders are left
         # remove from the beginning of the list
-        for _slider_num in range(number_of_sliders, self.nsliders):
+        for slider_num in range(number_of_sliders, self.nsliders):
             self._remove_slider_widget(0)
 
     def _remove_slider_widget(self, index):
@@ -229,10 +217,6 @@ class QtDims(QWidget):
         slider_widget = self.slider_widgets.pop(index)
         self._displayed_sliders.pop(index)
         self.layout().removeWidget(slider_widget)
-        # As we delete this widget later, callbacks with a weak reference
-        # to it may successfully grab the instance, but may be incompatible
-        # with other update state like dims.
-        self.dims.events.axis_labels.disconnect(slider_widget._pull_label)
         slider_widget.deleteLater()
         nsliders = np.sum(self._displayed_sliders)
         self.setMinimumHeight(int(nsliders * self.SLIDERHEIGHT))
@@ -299,8 +283,8 @@ class QtDims(QWidget):
                     fps, loop_mode, frame_range
                 )
                 return
-
-            self.stop()
+            else:
+                self.stop()
 
         # we want to avoid playing a dimension that does not have a slider
         # (like X or Y, or a third dimension in volume view.)
@@ -318,36 +302,19 @@ class QtDims(QWidget):
                 )
             )
 
-    @Slot()
     def stop(self):
         """Stop axis animation"""
-        if self._animation_worker is not None:
-            # Thread will be stop by the worker
-            self._animation_worker._stop()
-
-    @Slot()
-    def cleaned_worker(self):
+        if self._animation_thread:
+            self._animation_thread.quit()
+            self._animation_thread.wait()
         self._animation_thread = None
         self._animation_worker = None
-        self.dims._play_ready = True
+        self.enable_play()
 
     @property
     def is_playing(self):
         """Return True if any axis is currently animated."""
-        try:
-            return (
-                self._animation_thread and self._animation_thread.isRunning()
-            )
-        except RuntimeError as e:  # pragma: no cover
-            if (
-                "wrapped C/C++ object of type" not in e.args[0]
-                and "Internal C++ object" not in e.args[0]
-            ):
-                # checking if threat is partially deleted. Otherwise
-                # reraise exception. For more details see:
-                # https://github.com/napari/napari/pull/5499
-                raise
-            return False
+        return self._animation_thread and self._animation_thread.isRunning()
 
     def _set_frame(self, axis, frame):
         """Safely tries to set `axis` to the requested `point`.
@@ -357,10 +324,15 @@ class QtDims(QWidget):
         the canvas can draw, this will drop the intermediate frames, keeping
         the effective frame rate constant even if the canvas cannot keep up.
         """
-        if self.dims._play_ready:
+        if self._play_ready:
             # disable additional point advance requests until this one draws
-            self.dims._play_ready = False
+            self._play_ready = False
             self.dims.set_current_step(axis, frame)
+
+    def enable_play(self, *args):
+        # this is mostly here to connect to the main SceneCanvas.events.draw
+        # event in the qt_viewer
+        self._play_ready = True
 
     def closeEvent(self, event):
         [w.deleteLater() for w in self.slider_widgets]

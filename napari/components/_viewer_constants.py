@@ -1,10 +1,26 @@
-from napari.utils.compat import StrEnum
+from enum import Enum
 
 
-class CanvasPosition(StrEnum):
-    """Canvas overlay position.
+class Position(str, Enum):
+    """Position: Position on an object in the canvas.
 
-    Sets the position of an object in the canvas
+    Sets the position of an object (e.g. scale bar) in the canvas
+            * top_left: Top left of the canvas
+            * top_right: Top right of the canvas
+            * bottom_right: Bottom right of the canvas
+            * bottom_left: Bottom left of the canvas
+    """
+
+    TOP_LEFT = 'top_left'
+    TOP_RIGHT = 'top_right'
+    BOTTOM_RIGHT = 'bottom_right'
+    BOTTOM_LEFT = 'bottom_left'
+
+
+class TextOverlayPosition(str, Enum):
+    """Text overlay position: Position of the text overlay in the canvas.
+
+    Sets the position of an object (e.g. scale bar) in the canvas
             * top_left: Top left of the canvas
             * top_right: Top right of the canvas
             * top_center: Top center of the canvas
@@ -14,22 +30,19 @@ class CanvasPosition(StrEnum):
     """
 
     TOP_LEFT = 'top_left'
-    TOP_CENTER = "top_center"
     TOP_RIGHT = 'top_right'
+    TOP_CENTER = "top_center"
     BOTTOM_RIGHT = 'bottom_right'
-    BOTTOM_CENTER = "bottom_center"
     BOTTOM_LEFT = 'bottom_left'
+    BOTTOM_CENTER = "bottom_center"
 
 
-class CursorStyle(StrEnum):
+class CursorStyle(str, Enum):
     """CursorStyle: Style on the cursor.
 
     Sets the style of the cursor
             * square: A square
             * circle: A circle
-            * circle_frozen:
-                A brush circle with a frozen position along with the standard cursor.
-                It is used to show the brush size change while using Ctrl+Alt + mouse move.
             * cross: A cross
             * forbidden: A forbidden symbol
             * pointing: A finger for pointing
@@ -39,7 +52,6 @@ class CursorStyle(StrEnum):
 
     SQUARE = 'square'
     CIRCLE = 'circle'
-    CIRCLE_FROZEN = 'circle_frozen'
     CROSS = 'cross'
     FORBIDDEN = 'forbidden'
     POINTING = 'pointing'

@@ -4,9 +4,10 @@ import site
 from textwrap import indent
 from typing import TYPE_CHECKING, ClassVar, Set
 
-from napari._pydantic_compat import BaseSettings, Field, PrivateAttr
-from napari.utils.misc import ROOT_DIR
-from napari.utils.translations import trans
+from pydantic import BaseSettings, Field, PrivateAttr
+
+from ...utils.misc import ROOT_DIR
+from ...utils.translations import trans
 
 try:
     from rich import print
@@ -22,7 +23,7 @@ except ModuleNotFoundError:
     dotenv = None  # type: ignore
 
 if TYPE_CHECKING:
-    from napari.utils.events.event import Event
+    from .event import Event
 
 
 class EventDebugSettings(BaseSettings):
@@ -38,12 +39,8 @@ class EventDebugSettings(BaseSettings):
     # to include/exclude when printing events.
     include_emitters: Set[str] = Field(default_factory=set)
     include_events: Set[str] = Field(default_factory=set)
-    exclude_emitters: Set[str] = Field(
-        default_factory=lambda: {'TransformChain', 'Context'}
-    )
-    exclude_events: Set[str] = Field(
-        default_factory=lambda: {'status', 'position'}
-    )
+    exclude_emitters: Set[str] = {'TransformChain', 'Context'}
+    exclude_events: Set[str] = {'status', 'position'}
     # stack depth to show
     stack_depth: int = 20
     # how many sub-emit nesting levels to show
@@ -107,7 +104,7 @@ def log_event_stack(event: 'Event', cfg: EventDebugSettings = _SETTINGS):
     for f in reversed(call_stack):
         if 'self' in f.frame.f_locals:
             obj_type = type(f.frame.f_locals['self'])
-            module = obj_type.__module__ or ''
+            module = getattr(obj_type, '__module__') or ''
             if module.startswith("napari"):
                 trigger = f'{obj_type.__name__}.{f.function}()'
                 lines.insert(1, f'  was triggered by {trigger}, via:')
@@ -115,7 +112,7 @@ def log_event_stack(event: 'Event', cfg: EventDebugSettings = _SETTINGS):
 
     # seperate groups of events
     if not cfg._cur_depth:
-        lines = ["─" * 79, "", *lines]
+        lines = ["─" * 79, ''] + lines
     elif not cfg.nesting_allowance:
         return
 

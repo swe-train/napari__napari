@@ -10,10 +10,8 @@ from napari._qt.layer_controls.qt_image_controls_base import (
     QContrastLimitsPopup,
     QRangeSliderPopup,
     QtBaseImageControls,
-    QtLayerControls,
     range_to_decimals,
 )
-from napari.components.dims import Dims
 from napari.layers import Image, Surface
 
 _IMAGE = np.arange(100).astype(np.uint16).reshape((10, 10))
@@ -64,10 +62,8 @@ def test_changing_model_updates_view(qtbot, layer):
 @pytest.mark.parametrize(
     'layer', [Image(_IMAGE), Image(_IMAGE.astype(np.int32)), Surface(_SURF)]
 )
-def test_range_popup_clim_buttons(mock_show, qtbot, qapp, layer):
+def test_range_popup_clim_buttons(mock_show, qtbot, layer):
     """The buttons in the clim_popup should adjust the contrast limits value"""
-    # this test relies implicitly on ndisplay=3 which is now a broken assumption?
-    layer._slice_dims(Dims(ndim=3, ndisplay=3))
     qtctrl = QtBaseImageControls(layer)
     qtbot.addWidget(qtctrl)
     original_clims = tuple(layer.contrast_limits)
@@ -79,7 +75,7 @@ def test_range_popup_clim_buttons(mock_show, qtbot, qapp, layer):
         QPushButton, "reset_clims_button"
     )
     reset_button.click()
-    qapp.processEvents()
+    qtbot.wait(20)
     assert tuple(qtctrl.contrastLimitsSlider.value()) == original_clims
 
     rangebtn = qtctrl.clim_popup.findChild(
@@ -90,7 +86,7 @@ def test_range_popup_clim_buttons(mock_show, qtbot, qapp, layer):
     if np.issubdtype(layer.dtype, np.integer):
         info = np.iinfo(layer.dtype)
         rangebtn.click()
-        qapp.processEvents()
+        qtbot.wait(20)
         assert tuple(layer.contrast_limits_range) == (info.min, info.max)
         min_ = qtctrl.contrastLimitsSlider.minimum()
         max_ = qtctrl.contrastLimitsSlider.maximum()
@@ -129,35 +125,3 @@ def test_qt_image_controls_change_contrast(qtbot):
     qtbot.addWidget(qtctrl)
     qtctrl.contrastLimitsSlider.setValue((0.1, 0.8))
     assert tuple(layer.contrast_limits) == (0.1, 0.8)
-
-
-def test_tensorstore_clim_popup():
-    """Regression to test, makes sure it works with tensorstore dtype"""
-    ts = pytest.importorskip('tensorstore')
-    layer = Image(ts.array(np.random.rand(20, 20)))
-    QContrastLimitsPopup(layer)
-
-
-def test_blending_opacity_slider(qtbot):
-    """Tests whether opacity slider is disabled for minimum and opaque blending."""
-    layer = Image(np.random.rand(8, 8))
-    qtctrl = QtLayerControls(layer)
-    qtbot.addWidget(qtctrl)
-    assert layer.blending == 'translucent'
-    # check that the opacity slider is present by default
-    assert qtctrl.opacitySlider.isEnabled()
-    # set minimum blending, the opacity slider should be disabled
-    layer.blending = 'minimum'
-    assert not qtctrl.opacitySlider.isEnabled()
-    # set the blending to 'additive' confirm the slider is enabled
-    layer.blending = 'additive'
-    assert layer.blending == 'additive'
-    assert qtctrl.opacitySlider.isEnabled()
-    # set opaque blending, the opacity slider should be disabled
-    layer.blending = 'opaque'
-    assert layer.blending == 'opaque'
-    assert not qtctrl.opacitySlider.isEnabled()
-    # set the blending back to 'translucent' confirm the slider is enabled
-    layer.blending = 'translucent'
-    assert layer.blending == 'translucent'
-    assert qtctrl.opacitySlider.isEnabled()

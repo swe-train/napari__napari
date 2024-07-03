@@ -97,9 +97,8 @@ import logging
 import os
 import subprocess
 from multiprocessing.managers import SharedMemoryManager
-from typing import Dict, Union
 
-from napari.components.experimental.monitor._utils import base64_encoded_json
+from ._utils import base64_encoded_json
 
 LOGGER = logging.getLogger("napari.monitor")
 
@@ -108,7 +107,7 @@ START_CLIENTS = True
 
 # We pass the data in this template to each client as an encoded
 # NAPARI_MON_CLIENT environment variable.
-client_config_template: Dict[str, Union[str, int]] = {
+client_config_template = {
     "server_port": "<number>",
 }
 
@@ -145,7 +144,7 @@ class MonitorService:
     those.
     """
 
-    def __init__(self, config: dict, manager: SharedMemoryManager) -> None:
+    def __init__(self, config: dict, manager: SharedMemoryManager):
         super().__init__()
         self._config = config
         self._manager = manager

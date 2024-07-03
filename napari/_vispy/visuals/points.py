@@ -1,7 +1,7 @@
-from vispy.scene.visuals import Compound, Line, Text
+from vispy.scene.visuals import Compound, Line, Markers, Text
 
-from napari._vispy.visuals.clipping_planes_mixin import ClippingPlanesMixin
-from napari._vispy.visuals.markers import Markers
+from ..filters.points_clamp_size import ClampSizeFilter
+from .clipping_planes_mixin import ClippingPlanesMixin
 
 
 class PointsVisual(ClippingPlanesMixin, Compound):
@@ -16,16 +16,20 @@ class PointsVisual(ClippingPlanesMixin, Compound):
         - Text labels (vispy.TextVisual)
     """
 
-    def __init__(self) -> None:
-        super().__init__(
-            [
-                Markers(scaling='visual'),
-                Markers(scaling='visual'),
-                Line(),
-                Text(),
-            ]
-        )
+    def __init__(self):
+        self.clamp_filter = ClampSizeFilter()
+        super().__init__([Markers(), Markers(), Line(), Text()])
+        self.attach(self.clamp_filter)
         self.scaling = True
+
+    @property
+    def symbol(self):
+        return self._subvisuals[0].symbol
+
+    @symbol.setter
+    def symbol(self, value):
+        for marker in self._subvisuals[:2]:
+            marker.symbol = value
 
     @property
     def scaling(self):
@@ -33,12 +37,12 @@ class PointsVisual(ClippingPlanesMixin, Compound):
         Scaling property for both the markers visuals. If set to true,
         the points rescale based on zoom (i.e: constant world-space size)
         """
-        return self._subvisuals[0].scaling == 'visual'
+        return self._subvisuals[0].scaling
 
     @scaling.setter
     def scaling(self, value):
         for marker in self._subvisuals[:2]:
-            marker.scaling = 'visual' if value else 'fixed'
+            marker.scaling = value
 
     @property
     def antialias(self):
@@ -56,11 +60,3 @@ class PointsVisual(ClippingPlanesMixin, Compound):
     @spherical.setter
     def spherical(self, value):
         self._subvisuals[0].spherical = value
-
-    @property
-    def canvas_size_limits(self):
-        return self._subvisuals[0].canvas_size_limits
-
-    @canvas_size_limits.setter
-    def canvas_size_limits(self, value):
-        self._subvisuals[0].canvas_size_limits = value

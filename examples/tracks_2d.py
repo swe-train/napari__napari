@@ -2,12 +2,10 @@
 Tracks 2D
 =========
 
-.. tags:: visualization-basic
 """
 
-import numpy as np
-
 import napari
+import numpy as np
 
 
 def _circle(r, theta):

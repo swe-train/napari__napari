@@ -3,19 +3,17 @@ Add labels with features
 ========================
 
 Display a labels layer with various features
-
-.. tags:: layers, analysis
 """
 
 
-import numpy as np
 from skimage import data
 from skimage.filters import threshold_otsu
-from skimage.measure import label
-from skimage.morphology import closing, remove_small_objects, square
 from skimage.segmentation import clear_border
-
+from skimage.measure import label
+from skimage.morphology import closing, square, remove_small_objects
+import numpy as np
 import napari
+
 
 image = data.coins()[50:-50, 50:-50]
 
@@ -44,12 +42,10 @@ label_features = {
     'row': ['none']
     + ['top'] * 4
     + ['bottom'] * 4,  # background is row: none
-    'size': ["none", *coin_sizes],  # background is size: none
+    'size': ['none'] + list(coin_sizes),  # background is size: none
 }
 
-color = {1: 'white', 2: 'blue', 3: 'green', 4: 'red', 5: 'yellow', None: 'magenta'}
-# Here we provide a dict with color mappings for a subset of labels;
-# we also provide a default color (`None` key) which will be used by all other labels
+color = {1: 'white', 2: 'blue', 3: 'green', 4: 'red', 5: 'yellow'}
 
 # add the labels
 label_layer = viewer.add_labels(

@@ -8,14 +8,12 @@ from typing import TYPE_CHECKING, List, Optional, Union
 from napari_plugin_engine import HookCaller, HookImplementation
 from qtpy.QtCore import QEvent, Qt, Signal, Slot
 from qtpy.QtWidgets import (
-    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QFrame,
     QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
-    QListView,
     QListWidget,
     QListWidgetItem,
     QSizePolicy,
@@ -24,11 +22,11 @@ from qtpy.QtWidgets import (
 )
 from superqt import QElidingLabel
 
-from napari._qt.utils import drag_with_pixmap
-from napari._qt.widgets.qt_tooltip import QtToolTipLabel
-from napari.plugins import plugin_manager as napari_plugin_manager
-from napari.settings import get_settings
-from napari.utils.translations import trans
+from ...plugins import plugin_manager as napari_plugin_manager
+from ...settings import get_settings
+from ...utils.translations import trans
+from ..utils import drag_with_pixmap
+from .qt_tooltip import QtToolTipLabel
 
 if TYPE_CHECKING:
     from napari_plugin_engine import PluginManager
@@ -45,10 +43,10 @@ def rst2html(text):
         _text, _link = match.groups()[0].split('<')
         return f'<a href="{_link.rstrip(">")}">{_text.strip()}</a>'
 
-    text = re.sub(r'\*\*([^*]+)\*\*', '<strong>\\1</strong>', text)
-    text = re.sub(r'\*([^*]+)\*', '<em>\\1</em>', text)
-    text = re.sub(r':[a-z]+:`([^`]+)`', ref, text, flags=re.DOTALL)
-    text = re.sub(r'`([^`]+)`_', link, text, flags=re.DOTALL)
+    text = re.sub(r'\*\*([^\*]+)\*\*', '<strong>\\1</strong>', text)
+    text = re.sub(r'\*([^\*]+)\*', '<em>\\1</em>', text)
+    text = re.sub(r':[a-z]+:`([^`]+)`', ref, text, re.DOTALL)
+    text = re.sub(r'`([^`]+)`_', link, text, re.DOTALL)
     text = re.sub(r'``([^`]+)``', '<code>\\1</code>', text)
     return text.replace("\n", "<br>")
 
@@ -78,7 +76,7 @@ class ImplementationListItem(QFrame):
 
     on_changed = Signal()  # when user changes whether plugin is enabled.
 
-    def __init__(self, item: QListWidgetItem, parent: QWidget = None) -> None:
+    def __init__(self, item: QListWidgetItem, parent: QWidget = None):
         super().__init__(parent)
         self.item = item
         self.opacity = QGraphicsOpacityEffect(self)
@@ -148,7 +146,7 @@ class QtHookImplementationListWidget(QListWidget):
     ----------
     parent : QWidget, optional
         Optional parent widget, by default None
-    hook_caller : HookCaller, optional
+    hook : HookCaller, optional
         The ``HookCaller`` for which to show implementations. by default None
         (i.e. no hooks shown)
 
@@ -165,12 +163,12 @@ class QtHookImplementationListWidget(QListWidget):
         self,
         parent: Optional[QWidget] = None,
         hook_caller: Optional[HookCaller] = None,
-    ) -> None:
+    ):
         super().__init__(parent)
-        self.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self.setDefaultDropAction(Qt.MoveAction)
         self.setDragEnabled(True)
-        self.setDragDropMode(QListView.InternalMove)
-        self.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.setDragDropMode(self.InternalMove)
+        self.setSelectionMode(self.SingleSelection)
         self.setAcceptDrops(True)
         self.setSpacing(1)
         self.setMinimumHeight(1)
@@ -209,7 +207,7 @@ class QtHookImplementationListWidget(QListWidget):
         hook_implementation : HookImplementation
             The hook implementation object to add to the list.
         """
-        item = QListWidgetItem(self)
+        item = QListWidgetItem(parent=self)
         item.hook_implementation = hook_implementation
         self.addItem(item)
         widg = ImplementationListItem(item, parent=self)
@@ -230,9 +228,9 @@ class QtHookImplementationListWidget(QListWidget):
         order = [self.item(r).hook_implementation for r in range(self.count())]
         self.order_changed.emit(order)
 
-    def startDrag(self, supported_actions):
+    def startDrag(self, supportedActions: Qt.DropActions):
         drag = drag_with_pixmap(self)
-        drag.exec_(supported_actions, Qt.DropAction.MoveAction)
+        drag.exec_(supportedActions, Qt.MoveAction)
 
     @Slot(list)
     def permute_hook(self, order: List[HookImplementation]):
@@ -293,7 +291,7 @@ class QtPluginSorter(QWidget):
         parent: Optional[QWidget] = None,
         initial_hook: Optional[str] = None,
         firstresult_only: bool = True,
-    ) -> None:
+    ):
         super().__init__(parent)
 
         self.plugin_manager = plugin_manager
@@ -307,13 +305,12 @@ class QtPluginSorter(QWidget):
             if not hook_caller.spec:
                 continue
 
-            # if the firstresult_only option is set
-            # we only want to include hook_specifications that declare the
-            # "firstresult" option as True.
-            if firstresult_only and not hook_caller.spec.opts.get(
-                'firstresult', False
-            ):
-                continue
+            if firstresult_only:
+                # if the firstresult_only option is set
+                # we only want to include hook_specifications that declare the
+                # "firstresult" option as True.
+                if not hook_caller.spec.opts.get('firstresult', False):
+                    continue
             self.hook_combo_box.addItem(
                 name.replace("napari_", ""), hook_caller
             )

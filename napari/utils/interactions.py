@@ -1,17 +1,11 @@
-import contextlib
 import inspect
+import re
 import sys
 import warnings
-from typing import List
 
 from numpydoc.docscrape import FunctionDoc
 
-from napari.utils.key_bindings import (
-    KeyBinding,
-    KeyBindingLike,
-    coerce_keybinding,
-)
-from napari.utils.translations import trans
+from ..utils.translations import trans
 
 
 def mouse_wheel_callbacks(obj, event):
@@ -212,18 +206,21 @@ def mouse_release_callbacks(obj, event):
     """
     for func, gen in tuple(obj._mouse_drag_gen.items()):
         obj._persisted_mouse_event[gen].__wrapped__ = event
-        with contextlib.suppress(StopIteration):
+        try:
             # Run last part of the function to trigger release event
             next(gen)
+        except StopIteration:
+            pass
         # Finally delete the generator and stored event
         del obj._mouse_drag_gen[func]
         del obj._persisted_mouse_event[gen]
 
 
 KEY_SYMBOLS = {
-    'Ctrl': 'Ctrl',
+    'Control': 'Ctrl',
     'Shift': '⇧',
     'Alt': 'Alt',
+    'Option': 'Opt',
     'Meta': '⊞',
     'Left': '←',
     'Right': '→',
@@ -239,37 +236,14 @@ KEY_SYMBOLS = {
 }
 
 
-JOINCHAR = '+'
+joinchar = '-'
 if sys.platform.startswith('darwin'):
-    KEY_SYMBOLS.update({'Ctrl': '⌃', 'Alt': '⌥', 'Meta': '⌘'})
-    JOINCHAR = ''
+    KEY_SYMBOLS.update(
+        {'Control': '⌘', 'Alt': '⌥', 'Option': '⌥', 'Meta': '⌃'}
+    )
+    joinchar = ''
 elif sys.platform.startswith('linux'):
     KEY_SYMBOLS.update({'Meta': 'Super'})
-
-
-def _kb2mods(key_bind: KeyBinding) -> List[str]:
-    """Extract list of modifiers from a key binding.
-
-    Parameters
-    ----------
-    key_bind : KeyBinding
-        The key binding whose mods are to be extracted.
-
-    Returns
-    -------
-    list of str
-        The key modifiers used by the key binding.
-    """
-    mods = []
-    if key_bind.ctrl:
-        mods.append('Ctrl')
-    if key_bind.shift:
-        mods.append('Shift')
-    if key_bind.alt:
-        mods.append('Alt')
-    if key_bind.meta:
-        mods.append('Meta')
-    return mods
 
 
 class Shortcut:
@@ -284,71 +258,38 @@ class Shortcut:
     instead of -.
     """
 
-    def __init__(self, shortcut: KeyBindingLike) -> None:
-        """Parameters
+    def __init__(self, shortcut: str):
+        """
+        Parameters
         ----------
-        shortcut : keybinding-like
-            shortcut to format
+        shortcut : string
+            shortcut to format in the form of dash separated keys to press
+
         """
-        error_msg = trans._(
-            "`{shortcut}` does not seem to be a valid shortcut Key.",
-            shortcut=shortcut,
-        )
-        error = False
+        self._values = re.split('-(?=.+)', shortcut)
+        for shortcut_key in self._values:
+            if (
+                len(shortcut_key) > 1
+                and shortcut_key not in KEY_SYMBOLS.keys()
+            ):
 
-        try:
-            self._kb = coerce_keybinding(shortcut)
-        except ValueError:
-            error = True
-        else:
-            for part in self._kb.parts:
-                shortcut_key = str(part.key)
-                if len(shortcut_key) > 1 and shortcut_key not in KEY_SYMBOLS:
-                    error = True
-
-        if error:
-            warnings.warn(error_msg, UserWarning, stacklevel=2)
-
-    @staticmethod
-    def parse_platform(text: str) -> str:
-        """
-        Parse a current_platform_specific shortcut, and return a canonical
-        version separated with dashes.
-
-        This replace platform specific symbols, like ↵ by Enter,  ⌘ by Command on MacOS....
-        """
-        # edge case, shortcut combinaison where `+` is a key.
-        # this should be rare as on english keyboard + is Shift-Minus.
-        # but not unheard of. In those case `+` is always at the end with `++`
-        # as you can't get two non-modifier keys,  or alone.
-        if text == '+':
-            return text
-        if JOINCHAR == "+":
-            text = text.replace('++', '+Plus')
-            text = text.replace('+', '')
-            text = text.replace('Plus', '+')
-        for k, v in KEY_SYMBOLS.items():
-            if text.endswith(v):
-                text = text.replace(v, k)
-            else:
-                text = text.replace(v, k + '-')
-
-        return text
+                warnings.warn(
+                    trans._(
+                        "{shortcut_key} does not seem to be a valid shortcut Key.",
+                        shortcut_key=shortcut_key,
+                    ),
+                    UserWarning,
+                    stacklevel=2,
+                )
 
     @property
     def qt(self) -> str:
-        """Representation of the keybinding as it would appear in Qt.
-
-        Returns
-        -------
-        string
-            Shortcut formatted to be used with Qt.
-        """
-        return str(self._kb)
+        return '+'.join(self._values)
 
     @property
     def platform(self) -> str:
-        """Format the given shortcut for the current platform.
+        """
+        Format the given shortcut for the current platform.
 
         Replace Cmd, Ctrl, Meta...etc by appropriate symbols if relevant for the
         given platform.
@@ -358,13 +299,8 @@ class Shortcut:
         string
             Shortcut formatted to be displayed on current paltform.
         """
-        return ' '.join(
-            JOINCHAR.join(
-                KEY_SYMBOLS.get(x, x)
-                for x in ([*_kb2mods(part), str(part.key)])
-            )
-            for part in self._kb.parts
-        )
+
+        return joinchar.join(KEY_SYMBOLS.get(x, x) for x in self._values)
 
     def __str__(self):
         return self.platform

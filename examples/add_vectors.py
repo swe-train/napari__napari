@@ -8,13 +8,12 @@ Each vector position is defined by an (x, y, x-proj, y-proj) element where
 * x and y are the center points
 * x-proj and y-proj are the vector projections at each center
 
-.. tags:: visualization-basic
 """
 
-import numpy as np
-from skimage import data
-
 import napari
+from skimage import data
+import numpy as np
+
 
 # create the viewer and window
 viewer = napari.Viewer()

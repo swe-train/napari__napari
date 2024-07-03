@@ -3,12 +3,10 @@ Scale bar
 =========
 
 Display a 3D volume and the scale bar
-
-.. tags:: experimental
 """
-from skimage import data
-
+import numpy as np
 import napari
+from skimage import data
 
 cells = data.cells3d()
 

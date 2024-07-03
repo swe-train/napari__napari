@@ -1,7 +1,7 @@
 from vispy.scene.visuals import Compound, Line, Text
 
-from napari._vispy.filters.tracks import TracksFilter
-from napari._vispy.visuals.clipping_planes_mixin import ClippingPlanesMixin
+from ..filters.tracks import TracksFilter
+from .clipping_planes_mixin import ClippingPlanesMixin
 
 
 class TracksVisual(ClippingPlanesMixin, Compound):
@@ -15,7 +15,7 @@ class TracksVisual(ClippingPlanesMixin, Compound):
         - Graph edges (vispy.LineVisual)
     """
 
-    def __init__(self) -> None:
+    def __init__(self):
         self.tracks_filter = TracksFilter()
         self.graph_filter = TracksFilter()
 

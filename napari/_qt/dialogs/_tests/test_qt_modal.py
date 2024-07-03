@@ -44,7 +44,7 @@ class TestQtPopup:
         with pytest.raises(ValueError):
             popup.move_to("dummy_text")
 
-        with pytest.raises(TypeError):
+        with pytest.raises(ValueError):
             popup.move_to({})
 
     @pytest.mark.parametrize("pos", [[10, 10, 10, 10], (15, 10, 10, 10)])

@@ -1,9 +1,8 @@
-import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon
-
 from napari.layers.shapes._shapes_utils import (
     generate_2D_edge_meshes,
-)
+)  # , old_generate_2D_edge_meshes
+import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon
 
 fig, axes = plt.subplots(2, 3)
 # fig.set_figwidth(15)

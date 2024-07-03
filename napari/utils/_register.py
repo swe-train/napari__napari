@@ -1,8 +1,8 @@
 import sys
 from inspect import Parameter, getdoc, signature
 
-from napari.utils.misc import camel_to_snake
-from napari.utils.translations import trans
+from .misc import camel_to_snake
+from .translations import trans
 
 template = """def {name}{signature}:
     kwargs = locals()
@@ -14,11 +14,6 @@ template = """def {name}{signature}:
 
 
 def create_func(cls, name=None, doc=None, filename: str = '<string>'):
-    """
-    Creates a function (such as `add_<layer>`) to add a layer to the viewer
-
-    The functionality is inherited from the corresponding `<layer>` class.
-    """
     cls_name = cls.__name__
 
     if name is None:
@@ -36,16 +31,10 @@ def create_func(cls, name=None, doc=None, filename: str = '<string>'):
     name = 'add_' + name
 
     if doc is None:
-        # While the original class may have Attributes in its docstring, the
-        # generated function should not have an Attributes section.
-        # See https://numpydoc.readthedocs.io/en/latest/format.html#documenting-classes
         doc = getdoc(cls)
-        start = doc.find('\n\nParameters\n----------\n')
-        end = doc.find('\n\nAttributes\n----------\n')
-        if end == -1:
-            end = None
-        if start > 0:
-            doc = doc[start:end]
+        cutoff = doc.find('\n\nParameters\n----------\n')
+        if cutoff > 0:
+            doc = doc[cutoff:]
 
         n = 'n' if cls_name[0].lower() in 'aeiou' else ''
         doc = f'Add a{n} {cls_name} layer to the layer list. ' + doc
@@ -56,10 +45,8 @@ def create_func(cls, name=None, doc=None, filename: str = '<string>'):
 
     sig = signature(cls)
     new_sig = sig.replace(
-        parameters=[
-            Parameter("self", Parameter.POSITIONAL_OR_KEYWORD),
-            *list(sig.parameters.values()),
-        ],
+        parameters=[Parameter('self', Parameter.POSITIONAL_OR_KEYWORD)]
+        + list(sig.parameters.values()),
         return_annotation=cls,
     )
     src = template.format(
@@ -79,7 +66,7 @@ def create_func(cls, name=None, doc=None, filename: str = '<string>'):
 
 
 def _register(cls, *, name=None, doc=None):
-    from napari.components import ViewerModel
+    from ..components import ViewerModel
 
     func = create_func(cls, name=name, doc=doc)
     setattr(ViewerModel, func.__name__, func)

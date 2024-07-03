@@ -1,4 +1,3 @@
-# mypy: disable-error-code=empty-body
 """
 All napari hook specifications for pluggable functionality are defined here.
 
@@ -41,7 +40,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from napari_plugin_engine import napari_hook_specification
 
-from napari.types import (
+from ..types import (
     AugmentedWidget,
     ReaderFunction,
     SampleData,
@@ -390,9 +389,9 @@ def napari_write_vectors(path: str, data: Any, meta: dict) -> Optional[str]:
 
 
 @napari_hook_specification(historic=True)
-def napari_experimental_provide_function() -> (
-    Union[FunctionType, List[FunctionType]]
-):
+def napari_experimental_provide_function() -> Union[
+    FunctionType, List[FunctionType]
+]:
     """Provide function(s) that can be passed to magicgui.
 
     This hook specification is marked as experimental as the API or how the
@@ -426,9 +425,9 @@ def napari_experimental_provide_function() -> (
 
 
 @napari_hook_specification(historic=True)
-def napari_experimental_provide_dock_widget() -> (
-    Union[AugmentedWidget, List[AugmentedWidget]]
-):
+def napari_experimental_provide_dock_widget() -> Union[
+    AugmentedWidget, List[AugmentedWidget]
+]:
     """Provide functions that return widgets to be docked in the viewer.
 
     This hook specification is marked as experimental as the API or how the
@@ -500,9 +499,9 @@ def napari_experimental_provide_dock_widget() -> (
 
 
 @napari_hook_specification(historic=True)
-def napari_experimental_provide_theme() -> (
-    Dict[str, Dict[str, Union[str, Tuple, List]]]
-):
+def napari_experimental_provide_theme() -> Dict[
+    str, Dict[str, Union[str, Tuple, List]]
+]:
     """Provide GUI with a set of colors used through napari. This hook allows you to
     provide additional color schemes so you can accomplish your desired styling.
 

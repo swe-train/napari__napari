@@ -3,7 +3,8 @@
 import json
 import logging
 
-from napari.components.layerlist import LayerList
+from ....layers.image.experimental.octree_image import _OctreeImageBase
+from ...layerlist import LayerList
 
 LOGGER = logging.getLogger("napari.monitor")
 
@@ -35,8 +36,20 @@ class RemoteCommands:
     commands, command implementations should be spread out all over the system.
     """
 
-    def __init__(self, layers: LayerList) -> None:
+    def __init__(self, layers: LayerList):
         self.layers = layers
+
+    def show_grid(self, show: bool) -> None:
+        """Set whether the octree tile grid is visible.
+
+        Parameters
+        ----------
+        show : bool
+            If True the grid is shown.
+        """
+        for layer in self.layers.selected:
+            if isinstance(layer, _OctreeImageBase):
+                layer.display.show_grid = show
 
     def process_command(self, event) -> None:
         """Process this one command from the remote client.
@@ -62,4 +75,4 @@ class RemoteCommands:
                 LOGGER.info("Calling RemoteCommands.%s(%s)", name, args)
                 method(args)
             except AttributeError:
-                LOGGER.exception("RemoteCommands.%s does not exist.", name)
+                LOGGER.error("RemoteCommands.%s does not exist.", name)

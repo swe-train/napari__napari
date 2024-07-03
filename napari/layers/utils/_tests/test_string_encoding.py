@@ -7,7 +7,7 @@ from napari.layers.utils.string_encoding import (
     DirectStringEncoding,
     FormatStringEncoding,
     ManualStringEncoding,
-    StringEncoding,
+    validate_string_encoding,
 )
 
 
@@ -137,7 +137,7 @@ def test_validate_from_format_string():
     argument = '{class}: {score:.2f}'
     expected = FormatStringEncoding(format=argument)
 
-    actual = StringEncoding.validate(argument)
+    actual = validate_string_encoding(argument)
 
     assert actual == expected
 
@@ -146,7 +146,7 @@ def test_validate_from_non_format_string():
     argument = 'abc'
     expected = DirectStringEncoding(feature=argument)
 
-    actual = StringEncoding.validate(argument)
+    actual = validate_string_encoding(argument)
 
     assert actual == expected
 
@@ -155,7 +155,7 @@ def test_validate_from_sequence():
     argument = ['a', 'b', 'c']
     expected = ManualStringEncoding(array=argument)
 
-    actual = StringEncoding.validate(argument)
+    actual = validate_string_encoding(argument)
 
     assert actual == expected
 
@@ -165,7 +165,7 @@ def test_validate_from_constant_dict():
     argument = {'constant': constant}
     expected = ConstantStringEncoding(constant=constant)
 
-    actual = StringEncoding.validate(argument)
+    actual = validate_string_encoding(argument)
 
     assert actual == expected
 
@@ -176,7 +176,7 @@ def test_validate_from_manual_dict():
     argument = {'array': array, 'default': default}
     expected = ManualStringEncoding(array=array, default=default)
 
-    actual = StringEncoding.validate(argument)
+    actual = validate_string_encoding(argument)
 
     assert actual == expected
 
@@ -186,16 +186,16 @@ def test_validate_from_direct_dict():
     argument = {'feature': feature}
     expected = DirectStringEncoding(feature=feature)
 
-    actual = StringEncoding.validate(argument)
+    actual = validate_string_encoding(argument)
 
     assert actual == expected
 
 
 def test_validate_from_format_dict():
-    format_str = '{class}: {score:.2f}'
-    argument = {'format': format_str}
-    expected = FormatStringEncoding(format=format_str)
+    format = '{class}: {score:.2f}'
+    argument = {'format': format}
+    expected = FormatStringEncoding(format=format)
 
-    actual = StringEncoding.validate(argument)
+    actual = validate_string_encoding(argument)
 
     assert actual == expected

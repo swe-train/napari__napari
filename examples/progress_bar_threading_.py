@@ -5,12 +5,9 @@ Progress bar threading
 This file provides a minimal working example using a progress bar alongside
 ``@thread_worker`` to report progress.
 
-.. tags:: interactivity
 """
 from time import sleep
-
 from qtpy.QtWidgets import QPushButton, QVBoxLayout, QWidget
-
 import napari
 from napari.qt import thread_worker
 
@@ -66,11 +63,11 @@ def return_func(return_val):
     connect={'returned': return_func},
 )
 def my_function(*_):
-    sum_val = 0
+    sum = 0
     for i in range(10):
-        sum_val += i
+        sum += i
         sleep(0.1)
-    return sum_val
+    return sum
 
 
 button_layout = QVBoxLayout()

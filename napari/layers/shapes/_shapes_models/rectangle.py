@@ -1,8 +1,8 @@
 import numpy as np
 
-from napari.layers.shapes._shapes_models.shape import Shape
-from napari.layers.shapes._shapes_utils import find_corners, rectangle_to_box
-from napari.utils.translations import trans
+from ....utils.translations import trans
+from .._shapes_utils import find_corners, rectangle_to_box
+from .shape import Shape
 
 
 class Rectangle(Shape):
@@ -31,7 +31,8 @@ class Rectangle(Shape):
         z_index=0,
         dims_order=None,
         ndisplay=2,
-    ) -> None:
+    ):
+
         super().__init__(
             edge_width=edge_width,
             z_index=z_index,
@@ -59,6 +60,7 @@ class Rectangle(Shape):
             data = find_corners(data)
 
         if len(data) != 4:
+            print(data)
             raise ValueError(
                 trans._(
                     "Data shape does not match a rectangle. Rectangle expects four corner vertices, {number} provided.",
@@ -77,6 +79,7 @@ class Rectangle(Shape):
         self._face_vertices = self.data_displayed
         self._face_triangles = np.array([[0, 1, 2], [0, 2, 3]])
         self._box = rectangle_to_box(self.data_displayed)
+
         data_not_displayed = self.data[:, self.dims_not_displayed]
         self.slice_key = np.round(
             [

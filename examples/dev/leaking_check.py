@@ -1,13 +1,12 @@
-import gc
 import os
-import weakref
-
-import numpy as np
-import objgraph
 import psutil
-import qtpy
+import weakref
+import gc
+import objgraph
 
 import napari
+import numpy as np
+import qtpy
 
 process = psutil.Process(os.getpid())
 viewer = napari.Viewer()

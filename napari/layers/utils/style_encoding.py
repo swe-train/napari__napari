@@ -1,19 +1,12 @@
 import warnings
 from abc import ABC, abstractmethod
-from typing import (
-    Any,
-    Generic,
-    List,
-    Protocol,
-    TypeVar,
-    Union,
-    runtime_checkable,
-)
+from typing import Any, Generic, List, TypeVar, Union
 
 import numpy as np
+from typing_extensions import Protocol, runtime_checkable
 
-from napari.utils.events import EventedModel
-from napari.utils.translations import trans
+from ...utils.events import EventedModel
+from ...utils.translations import trans
 
 IndicesType = Union[range, List[int], np.ndarray]
 
@@ -229,7 +222,7 @@ class _DerivedStyleEncoding(
     fallback: StyleValue
     _cached: StyleArray
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._cached = _empty_array_like(self.fallback)
 
@@ -262,7 +255,7 @@ class _DerivedStyleEncoding(
                 ),
                 category=RuntimeWarning,
             )
-            shape = (features.shape[0], *self.fallback.shape)
+            shape = (features.shape[0],) + self.fallback.shape
             array = np.broadcast_to(self.fallback, shape)
         return array
 
@@ -280,16 +273,14 @@ class _DerivedStyleEncoding(
 
 
 def _get_style_values(
-    encoding: StyleEncoding[StyleValue, StyleArray],
-    indices: IndicesType,
-    value_ndim: int = 0,
+    encoding: StyleEncoding[StyleValue, StyleArray], indices: IndicesType
 ):
     """Returns a scalar style value or indexes non-scalar style values."""
     values = encoding._values
-    return values if values.ndim == value_ndim else values[indices]
+    return values if values.ndim == 0 else values[indices]
 
 
 def _empty_array_like(value: StyleValue) -> StyleArray:
     """Returns an empty array with the same type and remaining shape of the given value."""
-    shape = (0, *value.shape)
+    shape = (0,) + value.shape
     return np.empty_like(value, shape=shape)

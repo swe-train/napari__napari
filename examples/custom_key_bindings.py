@@ -2,14 +2,12 @@
 Custom key bindings
 ===================
 
-Display one 4-D image layer using the ``add_image`` API
-
-.. tags:: gui
+Display one 4-D image layer using the add_image API
 """
 
 from skimage import data
-
 import napari
+
 
 blobs = data.binary_blobs(
     length=128, blob_size_fraction=0.05, n_dim=2, volume_fraction=0.25
@@ -23,7 +21,7 @@ def accept_image(viewer):
     msg = 'this is a good image'
     viewer.status = msg
     print(msg)
-    set_layer_data(viewer)
+    next(viewer)
 
 
 @viewer.bind_key('r')
@@ -31,10 +29,10 @@ def reject_image(viewer):
     msg = 'this is a bad image'
     viewer.status = msg
     print(msg)
-    set_layer_data(viewer)
+    next(viewer)
 
 
-def set_layer_data(viewer):
+def next(viewer):
     blobs = data.binary_blobs(
         length=128, blob_size_fraction=0.05, n_dim=2, volume_fraction=0.25
     ).astype(float)

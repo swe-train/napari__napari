@@ -4,12 +4,10 @@ Add points on nD shapes
 
 Add points on nD shapes in 3D using a mouse callback
 
-.. tags:: visualization-nD
 """
 
-import numpy as np
-
 import napari
+import numpy as np
 
 # Create rectangles in 4D
 data = [

@@ -3,8 +3,8 @@ from itertools import cycle, islice
 
 import numpy as np
 import pytest
+from pydantic import ValidationError
 
-from napari._pydantic_compat import ValidationError
 from napari.layers.utils.color_manager import ColorManager, ColorProperties
 from napari.utils.colormaps.categorical_colormap import CategoricalColormap
 from napari.utils.colormaps.standardize_color import transform_color
@@ -108,6 +108,7 @@ invalid_keys = {'values': np.array(['A', 'B', 'C'])}
 
 @pytest.mark.parametrize('c_props', [wrong_type, invalid_keys])
 def test_invalid_color_properties(c_props):
+
     colors = np.array([[1, 1, 1, 1], [1, 0, 0, 1], [0, 0, 0, 1]])
     with pytest.raises(ValidationError):
         _ = ColorManager(

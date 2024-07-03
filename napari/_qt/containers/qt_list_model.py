@@ -4,7 +4,7 @@ from typing import List, Optional, Sequence, TypeVar
 
 from qtpy.QtCore import QMimeData, QModelIndex, Qt
 
-from napari._qt.containers._base_item_model import _BaseEventedItemModel
+from ._base_item_model import _BaseEventedItemModel
 
 logger = logging.getLogger(__name__)
 ListIndexMIMEType = "application/x-list-index"
@@ -59,7 +59,7 @@ class QtListModel(_BaseEventedItemModel[ItemType]):
         bool ``True`` if the `data` and `action` were handled by the model;
             otherwise returns ``False``.
         """
-        if not data or action != Qt.DropAction.MoveAction:
+        if not data or action != Qt.MoveAction:
             return False
         if not data.hasFormat(self.mimeTypes()[0]):
             return False
@@ -67,25 +67,19 @@ class QtListModel(_BaseEventedItemModel[ItemType]):
         if isinstance(data, ItemMimeData):
             moving_indices = data.indices
 
-            logger.debug(
-                "dropMimeData: indices %s ➡ %s",
-                moving_indices,
-                destRow,
-            )
+            logger.debug(f"dropMimeData: indices {moving_indices} ➡ {destRow}")
 
             if len(moving_indices) == 1:
                 return self._root.move(moving_indices[0], destRow)
-
-            return bool(self._root.move_multiple(moving_indices, destRow))
+            else:
+                return bool(self._root.move_multiple(moving_indices, destRow))
         return False
 
 
 class ItemMimeData(QMimeData):
     """An object to store list indices data during a drag operation."""
 
-    def __init__(
-        self, items: Sequence[ItemType], indices: Sequence[int]
-    ) -> None:
+    def __init__(self, items: Sequence[ItemType], indices: Sequence[int]):
         super().__init__()
         self.items = items
         self.indices = tuple(sorted(indices))

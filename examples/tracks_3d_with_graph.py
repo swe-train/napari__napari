@@ -2,12 +2,10 @@
 Tracks 3D with graph
 ====================
 
-.. tags:: visualization-advanced
 """
 
-import numpy as np
-
 import napari
+import numpy as np
 
 
 def _circle(r, theta):

@@ -2,15 +2,13 @@
 nD image
 ========
 
-Display one 4-D image layer using the :func:`view_image` API.
-
-.. tags:: visualization-nD
+Display one 4-D image layer using the add_image API
 """
 
 import numpy as np
 from skimage import data
-
 import napari
+
 
 blobs = np.stack(
     [

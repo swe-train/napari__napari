@@ -87,13 +87,15 @@ def test_update_property_value_then_refresh_text_updates_node_strings():
 
 def test_change_canvas_size_limits():
     points = np.random.rand(3, 2)
-    layer = Points(points, canvas_size_limits=(0, 10000))
+    layer = Points(points)
     vispy_layer = VispyPointsLayer(layer)
-    node = vispy_layer.node
 
-    assert node.canvas_size_limits == (0, 10000)
-    layer.canvas_size_limits = (20, 80)
-    assert node.canvas_size_limits == (20, 80)
+    filter = vispy_layer.node.clamp_filter
+    assert filter.min_size == 0
+    assert filter.max_size == 10000
+    layer.experimental_canvas_size_limits = (20, 80)
+    assert filter.min_size == 20
+    assert filter.max_size == 80
 
 
 def test_text_with_non_empty_constant_string():
@@ -107,18 +109,3 @@ def test_text_with_non_empty_constant_string():
     # automatically broadcasts, so explicitly check length.
     assert len(text_node.text) == 3
     np.testing.assert_array_equal(text_node.text, ['a', 'a', 'a'])
-
-    # Ensure we do position calculation for constants.
-    # See https://github.com/napari/napari/issues/5378
-    # We want row, column coordinates so drop 3rd dimension and flip.
-    actual_position = text_node.pos[:, 1::-1]
-    np.testing.assert_allclose(actual_position, points)
-
-
-def test_change_antialiasing():
-    """Changing antialiasing on the layer should change it on the vispy node."""
-    points = np.random.rand(3, 2)
-    layer = Points(points)
-    vispy_layer = VispyPointsLayer(layer)
-    layer.antialiasing = 5
-    assert vispy_layer.node.antialias == layer.antialiasing

@@ -1,23 +1,11 @@
-import sys
-from typing import Any, Tuple, cast
+from typing import Tuple
 
 import numpy as np
-import numpy.typing as npt
+from pydantic import validator
 
-from napari._pydantic_compat import validator
-from napari.utils.events import EventedModel, SelectableEventedList
-from napari.utils.geometry import intersect_line_with_plane_3d
-from napari.utils.translations import trans
-
-if sys.version_info < (3, 10):
-    # Once 3.12+ there is a new syntax, type Foo = Bar[...], but
-    # we are not there yet.
-    from typing_extensions import TypeAlias
-else:
-    from typing import TypeAlias
-
-
-Point3D: TypeAlias = Tuple[float, float, float]
+from ...utils.events import EventedModel, SelectableEventedList
+from ...utils.geometry import intersect_line_with_plane_3d
+from ...utils.translations import trans
 
 
 class Plane(EventedModel):
@@ -36,26 +24,20 @@ class Plane(EventedModel):
         Whether the plane is considered enabled.
     """
 
-    normal: Point3D = (1, 0, 0)
-    position: Point3D = (0, 0, 0)
+    normal: Tuple[float, float, float] = (1, 0, 0)
+    position: Tuple[float, float, float] = (0, 0, 0)
 
-    @validator('normal', allow_reuse=True)
-    def _normalise_vector(cls, v: npt.NDArray) -> Point3D:
-        return cast(Point3D, tuple(v / np.linalg.norm(v)))
+    @validator('normal')
+    def _normalise_vector(cls, v):
+        return tuple(v / np.linalg.norm(v))
 
-    @validator('normal', 'position', pre=True, allow_reuse=True)
-    def _ensure_tuple(cls, v: Any) -> Point3D:
-        return cast(Point3D, tuple(v))
+    @validator('normal', 'position', pre=True)
+    def _ensure_tuple(cls, v):
+        return tuple(v)
 
-    def shift_along_normal_vector(self, distance: float) -> None:
+    def shift_along_normal_vector(self, distance: float):
         """Shift the plane along its normal vector by a given distance."""
-        assert len(self.position) == len(self.normal) == 3
-        self.position = cast(
-            Point3D,
-            tuple(
-                p + (distance * n) for p, n in zip(self.position, self.normal)
-            ),
-        )
+        self.position += distance * self.normal
 
     def intersect_with_line(
         self, line_position: np.ndarray, line_direction: np.ndarray
@@ -66,13 +48,7 @@ class Plane(EventedModel):
         )
 
     @classmethod
-    def from_points(
-        cls,
-        a: npt.NDArray,
-        b: npt.NDArray,
-        c: npt.NDArray,
-        enabled: bool = True,
-    ) -> 'Plane':
+    def from_points(cls, a, b, c, enabled=True):
         """Derive a Plane from three points.
 
         Parameters
@@ -101,7 +77,7 @@ class Plane(EventedModel):
             position=plane_position, normal=plane_normal, enabled=enabled
         )
 
-    def as_array(self) -> npt.NDArray:
+    def as_array(self):
         """Return a (2, 3) array representing the plane.
 
         [0, :] : plane position
@@ -110,7 +86,7 @@ class Plane(EventedModel):
         return np.stack([self.position, self.normal])
 
     @classmethod
-    def from_array(cls, array: npt.NDArray, enabled: bool = True) -> 'Plane':
+    def from_array(cls, array, enabled=True):
         """Construct a plane from a (2, 3) array.
 
         [0, :] : plane position
@@ -118,7 +94,7 @@ class Plane(EventedModel):
         """
         return cls(position=array[0], normal=array[1], enabled=enabled)
 
-    def __hash__(self) -> int:
+    def __hash__(self):
         return id(self)
 
 
@@ -165,7 +141,7 @@ class ClippingPlane(Plane):
 class ClippingPlaneList(SelectableEventedList):
     """A list of planes with some utility methods."""
 
-    def as_array(self) -> npt.NDArray:
+    def as_array(self):
         """Return a (N, 2, 3) array of clipping planes.
 
         [i, 0, :] : ith plane position
@@ -180,9 +156,7 @@ class ClippingPlaneList(SelectableEventedList):
         return np.stack(arrays)
 
     @classmethod
-    def from_array(
-        cls, array: npt.NDArray, enabled: bool = True
-    ) -> 'ClippingPlaneList':
+    def from_array(cls, array, enabled=True):
         """Construct the PlaneList from an (N, 2, 3) array.
 
         [i, 0, :] : ith plane position
@@ -203,9 +177,7 @@ class ClippingPlaneList(SelectableEventedList):
         return cls(planes)
 
     @classmethod
-    def from_bounding_box(
-        cls, center: Point3D, dimensions: Point3D, enabled: bool = True
-    ) -> 'ClippingPlaneList':
+    def from_bounding_box(cls, center, dimensions, enabled=True):
         """
         generate 6 planes positioned to form a bounding box, with normals towards the center
 
@@ -213,7 +185,7 @@ class ClippingPlaneList(SelectableEventedList):
         ----------
         center : ArrayLike
             (3,) array, coordinates of the center of the box
-        dimensions : ArrayLike
+        extents : ArrayLike
             (3,) array, dimensions of the box
 
         Returns

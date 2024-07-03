@@ -1,10 +1,9 @@
-from typing import Iterable, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 
-from napari.layers.points._points_constants import SYMBOL_ALIAS, Symbol
-from napari.utils.geometry import project_points_onto_plane
-from napari.utils.translations import trans
+from ...utils.geometry import project_points_onto_plane
+from ...utils.translations import trans
 
 
 def _create_box_from_corners_3d(
@@ -249,20 +248,3 @@ def fix_data_points(
             )
         ndim = data_ndim
     return points, ndim
-
-
-def coerce_symbols(array: Iterable) -> np.ndarray:
-    """
-    Parse an array of symbols and convert it to the correct strings.
-
-    Ensures that all strings are valid symbols and converts aliases.
-
-    Parameters
-    ----------
-    array : np.ndarray
-        Array of strings matching Symbol values.
-    """
-    # dtype has to be object, otherwise np.vectorize will cut it down to `U(N)`,
-    # where N is the biggest string currently in the array.
-    array = [SYMBOL_ALIAS.get(k, k) for k in (str(x).lower() for x in array)]
-    return np.vectorize(Symbol, otypes=[object])(array)

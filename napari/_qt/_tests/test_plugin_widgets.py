@@ -1,5 +1,4 @@
-from itertools import dropwhile
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 from napari_plugin_engine import napari_hook_implementation
@@ -7,7 +6,6 @@ from qtpy.QtWidgets import QWidget
 
 import napari
 from napari import Viewer
-from napari._qt.menus import PluginsMenu
 from napari._qt.qt_main_window import _instantiate_dock_widget
 from napari.utils._proxies import PublicOnlyProxy
 
@@ -17,13 +15,13 @@ class Widg1(QWidget):
 
 
 class Widg2(QWidget):
-    def __init__(self, napari_viewer) -> None:
+    def __init__(self, napari_viewer):
         self.viewer = napari_viewer
         super().__init__()
 
 
 class Widg3(QWidget):
-    def __init__(self, v: Viewer) -> None:
+    def __init__(self, v: Viewer):
         self.viewer = v
         super().__init__()
 
@@ -89,40 +87,43 @@ def test_plugin_widgets(monkeypatch, napari_plugin_manager):
     yield
 
 
-def test_plugin_widgets_menus(test_plugin_widgets, qtbot):
+def test_plugin_widgets_menus(test_plugin_widgets, make_napari_viewer):
     """Test the plugin widgets get added to the window menu correctly."""
+    viewer = make_napari_viewer()
     # only take the plugin actions
-    window = Mock()
-    qtwin = QWidget()
-    qtbot.addWidget(qtwin)
-    with patch.object(window, '_qt_window', qtwin):
-        actions = PluginsMenu(window=window).actions()
-    actions = list(dropwhile(lambda a: a.text() != '', actions))
-    texts = [a.text() for a in actions][1:]
-    for t in ['TestP1', 'Widg3 (TestP2)', 'magic (TestP3)']:
+    actions = viewer.window.plugins_menu.actions()
+    for cnt, action in enumerate(actions):
+        if action.text() == "":
+            # this is the separator
+            break
+    actions = actions[cnt + 1 :]
+    texts = [a.text() for a in actions]
+    for t in ['TestP1', 'TestP2: Widg3', 'TestP3: magic']:
         assert t in texts
 
     # Expect a submenu ("Test plugin1") with particular entries.
     tp1 = next(m for m in actions if m.text() == 'TestP1')
-    assert tp1.parent()
-    assert [a.text() for a in tp1.parent().actions()] == ['Widg1', 'Widg2']
+    assert tp1.menu()
+    assert [a.text() for a in tp1.menu().actions()] == ['Widg1', 'Widg2']
 
 
-def test_making_plugin_dock_widgets(
-    test_plugin_widgets, make_napari_viewer, qtbot
-):
+def test_making_plugin_dock_widgets(test_plugin_widgets, make_napari_viewer):
     """Test that we can create dock widgets, and they get the viewer."""
     viewer = make_napari_viewer()
     # only take the plugin actions
     actions = viewer.window.plugins_menu.actions()
-    actions = list(dropwhile(lambda a: a.text() != '', actions))
+    for cnt, action in enumerate(actions):
+        if action.text() == "":
+            # this is the separator
+            break
+    actions = actions[cnt + 1 :]
 
     # trigger the 'TestP2: Widg3' action
-    tp2 = next(m for m in actions if m.text().endswith('(TestP2)'))
+    tp2 = next(m for m in actions if m.text().startswith('TestP2'))
     tp2.trigger()
     # make sure that a dock widget was created
-    assert 'Widg3 (TestP2)' in viewer.window._dock_widgets
-    dw = viewer.window._dock_widgets['Widg3 (TestP2)']
+    assert 'TestP2: Widg3' in viewer.window._dock_widgets
+    dw = viewer.window._dock_widgets['TestP2: Widg3']
     assert isinstance(dw.widget(), Widg3)
     # This widget uses the parameter annotation method to receive a viewer
     assert isinstance(dw.widget().viewer, napari.Viewer)
@@ -130,13 +131,13 @@ def test_making_plugin_dock_widgets(
     tp2.trigger()
 
     # trigger the 'TestP1 > Widg2' action (it's in a submenu)
-    tp2 = next(m for m in actions if m.text().endswith('TestP1'))
-    action = tp2.parent().actions()[1]
+    tp2 = next(m for m in actions if m.text().startswith('TestP1'))
+    action = tp2.menu().actions()[1]
     assert action.text() == 'Widg2'
     action.trigger()
     # make sure that a dock widget was created
-    assert 'Widg2 (TestP1)' in viewer.window._dock_widgets
-    dw = viewer.window._dock_widgets['Widg2 (TestP1)']
+    assert 'TestP1: Widg2' in viewer.window._dock_widgets
+    dw = viewer.window._dock_widgets['TestP1: Widg2']
     assert isinstance(dw.widget(), Widg2)
     # This widget uses parameter *name* "napari_viewer" to get a viewer
     assert isinstance(dw.widget().viewer, napari.Viewer)
@@ -149,10 +150,7 @@ def test_making_plugin_dock_widgets(
     # Check that widget is destroyed when closed.
     dw.destroyOnClose()
     assert action not in viewer.window.plugins_menu.actions()
-    assert widg.parent() is None
-    widg.deleteLater()
-    widg.close()
-    qtbot.wait(50)
+    assert not widg.parent()
 
 
 def test_making_function_dock_widgets(test_plugin_widgets, make_napari_viewer):
@@ -162,17 +160,25 @@ def test_making_function_dock_widgets(test_plugin_widgets, make_napari_viewer):
     viewer = make_napari_viewer()
     # only take the plugin actions
     actions = viewer.window.plugins_menu.actions()
-    actions = dropwhile(lambda a: a.text() != '', actions)
+    for cnt, action in enumerate(actions):
+        if action.text() == "":
+            # this is the separator
+            break
+    actions = actions[cnt + 1 :]
 
     # trigger the 'TestP3: magic' action
-    tp3 = next(m for m in actions if m.text().endswith('(TestP3)'))
+    tp3 = next(m for m in actions if m.text().startswith('TestP3'))
     tp3.trigger()
     # make sure that a dock widget was created
-    assert 'magic (TestP3)' in viewer.window._dock_widgets
-    dw = viewer.window._dock_widgets['magic (TestP3)']
+    assert 'TestP3: magic' in viewer.window._dock_widgets
+    dw = viewer.window._dock_widgets['TestP3: magic']
     # make sure that it contains a magicgui widget
     magic_widget = dw.widget()._magic_widget
-    assert isinstance(magic_widget, magicgui.widgets.FunctionGui)
+    FGui = getattr(magicgui.widgets, 'FunctionGui', None)
+    if FGui is None:
+        # pre magicgui 0.2.6
+        FGui = magicgui.FunctionGui
+    assert isinstance(magic_widget, FGui)
     # This magicgui widget uses the parameter annotation to receive a viewer
     assert isinstance(magic_widget.viewer.value, napari.Viewer)
     # The function just returns the viewer... make sure we can call it

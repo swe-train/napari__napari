@@ -1,15 +1,15 @@
 import numpy as np
 
-from napari._vispy.layers.base import VispyBaseLayer
-from napari._vispy.utils.gl import BLENDING_MODES
-from napari._vispy.utils.text import update_text
-from napari._vispy.visuals.shapes import ShapesVisual
-from napari.settings import get_settings
-from napari.utils.events import disconnect_events
+from ...settings import get_settings
+from ...utils.events import disconnect_events
+from ..utils.gl import BLENDING_MODES
+from ..utils.text import update_text
+from ..visuals.shapes import ShapesVisual
+from .base import VispyBaseLayer
 
 
 class VispyShapesLayer(VispyBaseLayer):
-    def __init__(self, layer) -> None:
+    def __init__(self, layer):
         node = ShapesVisual()
         super().__init__(layer, node)
 
@@ -37,13 +37,13 @@ class VispyShapesLayer(VispyBaseLayer):
             vertices = vertices[:, ::-1]
 
         if len(vertices) == 0 or len(faces) == 0:
-            vertices = np.zeros((3, self.layer._slice_input.ndisplay))
+            vertices = np.zeros((3, self.layer._ndisplay))
             faces = np.array([[0, 1, 2]])
             colors = np.array([[0, 0, 0, 0]])
 
         if (
             len(self.layer.data)
-            and self.layer._slice_input.ndisplay == 3
+            and self.layer._ndisplay == 3
             and self.layer.ndim == 2
         ):
             vertices = np.pad(vertices, ((0, 0), (0, 1)), mode='constant')
@@ -65,7 +65,7 @@ class VispyShapesLayer(VispyBaseLayer):
         vertices, faces = self.layer._outline_shapes()
 
         if vertices is None or len(vertices) == 0 or len(faces) == 0:
-            vertices = np.zeros((3, self.layer._slice_input.ndisplay))
+            vertices = np.zeros((3, self.layer._ndisplay))
             faces = np.array([[0, 1, 2]])
 
         self.node._subvisuals[1].set_data(
@@ -81,14 +81,13 @@ class VispyShapesLayer(VispyBaseLayer):
             face_color,
             edge_color,
             pos,
-            _,
+            width,
         ) = self.layer._compute_vertices_and_box()
 
-        # use last dimension of scale like (thickness cannot be anisotropic)
-        width = settings.appearance.highlight_thickness / self.layer.scale[-1]
+        width = settings.appearance.highlight_thickness
 
         if vertices is None or len(vertices) == 0:
-            vertices = np.zeros((1, self.layer._slice_input.ndisplay))
+            vertices = np.zeros((1, self.layer._ndisplay))
             size = 0
         else:
             size = self.layer._vertex_size
@@ -102,7 +101,7 @@ class VispyShapesLayer(VispyBaseLayer):
         )
 
         if pos is None or len(pos) == 0:
-            pos = np.zeros((1, self.layer._slice_input.ndisplay))
+            pos = np.zeros((1, self.layer._ndisplay))
             width = 0
 
         self.node._subvisuals[2].set_data(

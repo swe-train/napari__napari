@@ -2,15 +2,13 @@
 nD shapes
 =========
 
-Display one 4-D image layer using the ``add_image`` API
-
-.. tags:: visualization-nD
+Display one 4-D image layer using the add_image API
 """
 
 import numpy as np
 from skimage import data
-
 import napari
+
 
 blobs = data.binary_blobs(
     length=128, blob_size_fraction=0.05, n_dim=3, volume_fraction=0.1

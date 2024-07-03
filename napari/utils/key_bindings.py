@@ -32,41 +32,16 @@ into two statements with the yield keyword::
 To create a keymap that will block others, ``bind_key(..., ...)```.
 """
 
-
-import contextlib
 import inspect
-import sys
-import time
+import re
+import types
 from collections import ChainMap
-from types import MethodType
-from typing import Callable, Mapping, Union
 
-from app_model.types import KeyBinding, KeyCode, KeyMod
 from vispy.util import keys
 
-from napari.utils.translations import trans
+from ..utils.translations import trans
 
-if sys.version_info >= (3, 10):
-    from types import EllipsisType
-else:
-    EllipsisType = type(Ellipsis)
-
-KeyBindingLike = Union[KeyBinding, str, int]
-Keymap = Mapping[
-    Union[KeyBinding, EllipsisType], Union[Callable, EllipsisType]
-]
-
-# global user keymap; to be made public later in refactoring process
-USER_KEYMAP: Mapping[str, Callable] = {}
-
-KEY_SUBS = {
-    'Control': 'Ctrl',
-    'Option': 'Alt',
-}
-
-_UNDEFINED = object()
-
-_VISPY_SPECIAL_KEYS = [
+SPECIAL_KEYS = [
     keys.SHIFT,
     keys.CONTROL,
     keys.ALT,
@@ -100,51 +75,141 @@ _VISPY_SPECIAL_KEYS = [
     keys.TAB,
 ]
 
-_VISPY_MODS = {
-    keys.CONTROL: KeyMod.CtrlCmd,
-    keys.SHIFT: KeyMod.Shift,
-    keys.ALT: KeyMod.Alt,
-    keys.META: KeyMod.WinCtrl,
-}
+MODIFIER_KEYS = [keys.CONTROL, keys.ALT, keys.SHIFT, keys.META]
 
-# TODO: add this to app-model instead
-KeyBinding.__hash__ = lambda self: hash(str(self))
+KEY_SUBS = {'Ctrl': 'Control'}
 
 
-def coerce_keybinding(key_bind: KeyBindingLike) -> KeyBinding:
-    """Convert a keybinding-like object to a KeyBinding.
+def parse_key_combo(key_combo):
+    """Parse a key combination into its components in a comparable format.
 
     Parameters
     ----------
-    key_bind : keybinding-like
-        Object to coerce.
+    key_combo : str
+        Key combination.
 
     Returns
     -------
-    key_bind : KeyBinding
-        Object as KeyBinding.
+    key : str
+        Base key of the combination.
+    modifiers : set of str
+        Modifier keys of the combination.
     """
-    if isinstance(key_bind, str):
-        for k, v in KEY_SUBS.items():
-            key_bind = key_bind.replace(k, v)
+    parsed = re.split('-(?=.+)', key_combo)
+    *modifiers, key = parsed
 
-    return KeyBinding.validate(key_bind)
+    return key, set(modifiers)
 
 
-def bind_key(
-    keymap: Keymap,
-    key_bind: Union[KeyBindingLike, EllipsisType],
-    func=_UNDEFINED,
-    *,
-    overwrite=False,
-):
+def components_to_key_combo(key, modifiers):
+    """Combine components to become a key combination.
+
+    Modifier keys will always be combined in the same order:
+    Control, Alt, Shift, Meta
+
+    Letters will always be read as upper-case.
+    Due to the native implementation of the key system, Shift pressed in
+    certain key combinations may yield inconsistent or unexpected results.
+    Therefore, it is not recommended to use Shift with non-letter keys. On OSX,
+    Control is swapped with Meta such that pressing Command reads as Control.
+
+    Parameters
+    ----------
+    key : str or vispy.app.Key
+        Base key.
+    modifiers : combination of str or vispy.app.Key
+        Modifier keys.
+
+    Returns
+    -------
+    key_combo : str
+        Generated key combination.
+    """
+    if len(key) == 1 and key.isalpha():  # it's a letter
+        key = key.upper()
+        cond = lambda m: True  # noqa: E731
+    elif key in SPECIAL_KEYS:
+        # remove redundant information i.e. an output of 'Shift-Shift'
+        cond = lambda m: m != key  # noqa: E731
+    else:
+        # Shift is consumed to transform key
+
+        # bug found on OSX: Command will cause Shift to not
+        # transform the key so do not consume it
+        # note: 'Control' is OSX Command key
+        cond = lambda m: m != 'Shift' or 'Control' in modifiers  # noqa: E731
+
+    modifiers = tuple(
+        key.name
+        for key in filter(
+            lambda key: key in modifiers and cond(key), MODIFIER_KEYS
+        )
+    )
+    return '-'.join(modifiers + (key,))
+
+
+def normalize_key_combo(key_combo):
+    """Normalize key combination to make it easily comparable.
+
+    All aliases are converted and modifier orders are fixed to:
+    Control, Alt, Shift, Meta
+
+    Letters will always be read as upper-case.
+    Due to the native implementation of the key system, Shift pressed in
+    certain key combinations may yield inconsistent or unexpected results.
+    Therefore, it is not recommended to use Shift with non-letter keys. On OSX,
+    Control is swapped with Meta such that pressing Command reads as Control.
+
+    Parameters
+    ----------
+    key_combo : str
+        Key combination.
+
+    Returns
+    -------
+    normalized_key_combo : str
+        Normalized key combination.
+    """
+    key, modifiers = parse_key_combo(key_combo)
+
+    if len(key) != 1 and key not in SPECIAL_KEYS:
+        raise TypeError(
+            trans._(
+                'invalid key {key}',
+                deferred=True,
+                key=key,
+            )
+        )
+
+    for modifier in modifiers:
+        if modifier in KEY_SUBS.keys():
+            modifiers.remove(modifier)
+            modifier = KEY_SUBS[modifier]
+
+            modifiers.add(modifier)
+        if modifier not in MODIFIER_KEYS:
+            raise TypeError(
+                trans._(
+                    'invalid modifier key {modifier}',
+                    deferred=True,
+                    modifier=modifier,
+                )
+            )
+
+    return components_to_key_combo(key, modifiers)
+
+
+UNDEFINED = object()
+
+
+def bind_key(keymap, key, func=UNDEFINED, *, overwrite=False):
     """Bind a key combination to a keymap.
 
     Parameters
     ----------
     keymap : dict of str: callable
         Keymap to modify.
-    key_bind : keybinding-like or ...
+    key : str or ...
         Key combination.
         ``...`` acts as a wildcard if no key combinations can be matched
         in the keymap (this will overwrite all key combinations
@@ -197,27 +262,27 @@ def bind_key(
 
     To create a keymap that will block others, ``bind_key(..., ...)```.
     """
-    if func is _UNDEFINED:
+    if func is UNDEFINED:
 
         def inner(func):
-            bind_key(keymap, key_bind, func, overwrite=overwrite)
+            bind_key(keymap, key, func, overwrite=overwrite)
             return func
 
         return inner
 
-    if key_bind is not Ellipsis:
-        key_bind = coerce_keybinding(key_bind)
+    if key is not Ellipsis:
+        key = normalize_key_combo(key)
 
-    if func is not None and key_bind in keymap and not overwrite:
+    if func is not None and key in keymap and not overwrite:
         raise ValueError(
             trans._(
-                'keybinding {key} already used! specify \'overwrite=True\' to bypass this check',
+                'key combination {key} already used! specify \'overwrite=True\' to bypass this check',
                 deferred=True,
-                key=str(key_bind),
+                key=key,
             )
         )
 
-    unbound = keymap.pop(key_bind, None)
+    unbound = keymap.pop(key, None)
 
     if func is not None:
         if func is not Ellipsis and not callable(func):
@@ -227,54 +292,9 @@ def bind_key(
                     deferred=True,
                 )
             )
-        keymap[key_bind] = func
+        keymap[key] = func
 
     return unbound
-
-
-def _get_user_keymap() -> Keymap:
-    """Retrieve the current user keymap. The user keymap is global and takes precedent over all other keymaps.
-
-    Returns
-    -------
-    user_keymap : dict of str: callable
-        User keymap.
-    """
-    return USER_KEYMAP
-
-
-def _bind_user_key(
-    key_bind: KeyBindingLike, func=_UNDEFINED, *, overwrite=False
-):
-    """Bind a key combination to the user keymap.
-
-    See ``bind_key`` docs for details.
-    """
-    return bind_key(_get_user_keymap(), key_bind, func, overwrite=overwrite)
-
-
-def _vispy2appmodel(event) -> KeyBinding:
-    key, modifiers = event.key.name, event.modifiers
-    if len(key) == 1 and key.isalpha():  # it's a letter
-        key = key.upper()
-        cond = lambda m: True  # noqa: E731
-    elif key in _VISPY_SPECIAL_KEYS:
-        # remove redundant information i.e. an output of 'Shift-Shift'
-        cond = lambda m: m != key  # noqa: E731
-    else:
-        # Shift is consumed to transform key
-
-        # bug found on OSX: Command will cause Shift to not
-        # transform the key so do not consume it
-        # note: 'Control' is OSX Command key
-        cond = lambda m: m != 'Shift' or 'Control' in modifiers  # noqa: E731
-
-    kb = KeyCode.from_string(KEY_SUBS.get(key, key))
-
-    for key in filter(lambda key: key in modifiers and cond(key), _VISPY_MODS):
-        kb |= _VISPY_MODS[key]
-
-    return coerce_keybinding(kb)
 
 
 class KeybindingDescriptor:
@@ -288,12 +308,12 @@ class KeybindingDescriptor:
         Function to bind.
     """
 
-    def __init__(self, func) -> None:
+    def __init__(self, func):
         self.__func__ = func
 
     def __get__(self, instance, cls):
         keymap = instance.keymap if instance is not None else cls.class_keymap
-        return MethodType(self.__func__, keymap)
+        return types.MethodType(self.__func__, keymap)
 
 
 class KeymapProvider:
@@ -307,17 +327,9 @@ class KeymapProvider:
         Instance keymap.
     """
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._keymap = {}
-
-    @property
-    def keymap(self):
-        return self._keymap
-
-    @keymap.setter
-    def keymap(self, value):
-        self._keymap = {coerce_keybinding(k): v for k, v in value.items()}
+        self.keymap = {}
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -325,10 +337,6 @@ class KeymapProvider:
         if 'class_keymap' not in cls.__dict__:
             # if in __dict__, was defined in class and not inherited
             cls.class_keymap = {}
-        else:
-            cls.class_keymap = {
-                coerce_keybinding(k): v for k, v in cls.class_keymap.items()
-            }
 
     bind_key = KeybindingDescriptor(bind_key)
 
@@ -349,7 +357,7 @@ def _bind_keymap(keymap, instance):
         Keymap with functions bound to the instance.
     """
     bound_keymap = {
-        key: MethodType(func, instance) if func is not Ellipsis else func
+        key: types.MethodType(func, instance) if func is not Ellipsis else func
         for key, func in keymap.items()
     }
     return bound_keymap
@@ -364,7 +372,7 @@ class KeymapHandler:
         Classes that provide the keymaps for this class to handle.
     """
 
-    def __init__(self) -> None:
+    def __init__(self):
         super().__init__()
         self._key_release_generators = {}
         self.keymap_providers = []
@@ -372,7 +380,7 @@ class KeymapHandler:
     @property
     def keymap_chain(self):
         """collections.ChainMap: Chain of keymaps from keymap providers."""
-        maps = [_get_user_keymap()]
+        maps = []
 
         for parent in self.keymap_providers:
             maps.append(_bind_keymap(parent.keymap, parent))
@@ -403,18 +411,18 @@ class KeymapHandler:
 
         return active_keymap_final
 
-    def press_key(self, key_bind):
+    def press_key(self, key_combo):
         """Simulate a key press to activate a keybinding.
 
         Parameters
         ----------
-        key_bind : keybinding-like
+        key_combo : str
             Key combination.
         """
-        key_bind = coerce_keybinding(key_bind)
+        key_combo = normalize_key_combo(key_combo)
         keymap = self.active_keymap
-        if key_bind in keymap:
-            func = keymap[key_bind]
+        if key_combo in keymap:
+            func = keymap[key_combo]
         elif Ellipsis in keymap:  # catch-all
             func = keymap[...]
         else:
@@ -422,7 +430,7 @@ class KeymapHandler:
 
         if func is Ellipsis:  # blocker
             return
-        if not callable(func):
+        elif not callable(func):
             raise TypeError(
                 trans._(
                     "expected {func} to be callable",
@@ -431,85 +439,51 @@ class KeymapHandler:
                 )
             )
 
-        generator_or_callback = func()
-
-        key = str(key_bind.parts[-1].key)
+        gen = func()
 
         if inspect.isgeneratorfunction(func):
             try:
-                next(generator_or_callback)  # call function
+                next(gen)  # call function
             except StopIteration:  # only one statement
                 pass
             else:
-                self._key_release_generators[key] = generator_or_callback
-        if isinstance(generator_or_callback, Callable):
-            self._key_release_generators[key] = (
-                generator_or_callback,
-                time.time(),
-            )
+                key, _ = parse_key_combo(key_combo)
+                self._key_release_generators[key] = gen
 
-    def release_key(self, key_bind):
+    def release_key(self, key_combo):
         """Simulate a key release for a keybinding.
 
         Parameters
         ----------
-        key_bind : keybinding-like
+        key_combo : str
             Key combination.
         """
-        from napari.settings import get_settings
-
-        key_bind = coerce_keybinding(key_bind)
-        key = str(key_bind.parts[-1].key)
-        with contextlib.suppress(KeyError, StopIteration):
-            val = self._key_release_generators[key]
-            # val could be callback function with time to check
-            # if it should be called or generator that need to make
-            # additional step on key release
-            if isinstance(val, tuple):
-                callback, start = val
-                if (
-                    time.time() - start
-                    > get_settings().application.hold_button_delay
-                ):
-                    callback()
-            else:
-                next(val)  # call function
+        key, _ = parse_key_combo(key_combo)
+        try:
+            next(self._key_release_generators[key])  # call function
+        except (KeyError, StopIteration):
+            pass
 
     def on_key_press(self, event):
-        """Called whenever key pressed in canvas.
+        """Callback that whenever key pressed in canvas.
 
         Parameters
         ----------
         event : vispy.util.event.Event
             The vispy key press event that triggered this method.
         """
-        from napari.utils.action_manager import action_manager
-
-        if event.key is None:
-            # TODO determine when None key could be sent.
-            return
-
-        kb = _vispy2appmodel(event)
-
-        repeatables = {
-            *action_manager._get_repeatable_shortcuts(self.keymap_chain),
-            "Up",
-            "Down",
-            "Left",
-            "Right",
-        }
-
         if (
             event.native is not None
             and event.native.isAutoRepeat()
-            and kb not in repeatables
+            and event.key.name not in ['Up', 'Down', 'Left', 'Right']
         ) or event.key is None:
-            # pass if no key is present or if the shortcut combo is held down,
-            # unless the combo being held down is one of the autorepeatables or
-            # one of the navigation keys (helps with scrolling).
+            # pass if no key is present or if key is held down, unless the
+            # key being held down is one of the navigation keys
+            # this helps for scrolling, etc.
             return
 
-        self.press_key(kb)
+        combo = components_to_key_combo(event.key.name, event.modifiers)
+        self.press_key(combo)
 
     def on_key_release(self, event):
         """Called whenever key released in canvas.
@@ -525,5 +499,5 @@ class KeymapHandler:
             and event.native.isAutoRepeat()
         ):
             return
-        kb = _vispy2appmodel(event)
-        self.release_key(kb)
+        combo = components_to_key_combo(event.key.name, event.modifiers)
+        self.release_key(combo)

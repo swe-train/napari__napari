@@ -3,8 +3,6 @@ Zarr array
 ==========
 
 Display a zarr array
-
-.. tags:: visualization-nD
 """
 
 try:
@@ -13,9 +11,10 @@ except ModuleNotFoundError:
     raise ModuleNotFoundError(
         """This example uses a zarr array but zarr is not
     installed. To install try 'pip install zarr'."""
-    ) from None
+    )
 
 import napari
+
 
 data = zarr.zeros((102_0, 200, 210), chunks=(100, 200, 210))
 data[53_0:53_1, 100:110, 110:120] = 1

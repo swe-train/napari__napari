@@ -2,23 +2,15 @@
 # https://asv.readthedocs.io/en/latest/writing_benchmarks.html
 # or the napari documentation on benchmarking
 # https://github.com/napari/napari/blob/main/docs/BENCHMARKS.md
-import os
-
 import numpy as np
 
-from napari.components import Dims
 from napari.layers import Points
-
-from .utils import Skiper
 
 
 class Points2DSuite:
     """Benchmarks for the Points layer with 2D data"""
 
     params = [2**i for i in range(4, 18, 2)]
-
-    if "PR" in os.environ:
-        skip_params = [(2**i,) for i in range(8, 18, 2)]
 
     def setup(self, n):
         np.random.seed(0)
@@ -61,8 +53,6 @@ class Points3DSuite:
     """Benchmarks for the Points layer with 3D data."""
 
     params = [2**i for i in range(4, 18, 2)]
-    if "PR" in os.environ:
-        skip_params = [(2**i,) for i in range(6, 18, 2)]
 
     def setup(self, n):
         np.random.seed(0)
@@ -102,20 +92,18 @@ class PointsSlicingSuite:
     """Benchmarks for slicing the Points layer with 3D data."""
 
     params = [True, False]
-    timeout = 300
 
     def setup(self, flatten_slice_axis):
         np.random.seed(0)
-        size = 20000 if "PR" in os.environ else 20000000
-        self.data = np.random.uniform(size=(size, 3), low=0, high=500)
+        self.data = np.random.uniform(size=(20_000_000, 3), low=0, high=500)
         if flatten_slice_axis:
             self.data[:, 0] = np.round(self.data[:, 0])
         self.layer = Points(self.data)
-        self.dims = Dims(ndim=3, point=(249, 0, 0))
+        self.slice = np.s_[249, :, :]
 
     def time_slice_points(self, flatten_slice_axis):
         """Time to take one slice of points"""
-        self.layer._make_slice_request(self.dims)()
+        self.layer._slice_data(self.slice)
 
 
 class PointsToMaskSuite:
@@ -135,9 +123,6 @@ class PointsToMaskSuite:
         ],
         [5, 10],
     ]
-
-    if "PR" in os.environ:
-        skip_params = Skiper(lambda x: x[0] > 256 or x[1][0] > 512)
 
     def setup(self, num_points, mask_shape, point_size):
         np.random.seed(0)

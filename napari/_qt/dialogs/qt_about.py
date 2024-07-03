@@ -9,8 +9,8 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
 )
 
-from napari.utils import citation_text, sys_info
-from napari.utils.translations import trans
+from ...utils import citation_text, sys_info
+from ...utils.translations import trans
 
 
 class QtAbout(QDialog):
@@ -40,7 +40,7 @@ class QtAbout(QDialog):
         Layout widget for the entire 'About napari' dialog.
     """
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None):
         super().__init__(parent)
 
         self.layout = QVBoxLayout()
@@ -51,25 +51,19 @@ class QtAbout(QDialog):
                 "<b>napari: a multi-dimensional image viewer for python</b>"
             )
         )
-        title_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
+        title_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.layout.addWidget(title_label)
 
         # Add information
         self.infoTextBox = QTextEdit()
-        self.infoTextBox.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
+        self.infoTextBox.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.infoTextBox.setLineWrapMode(QTextEdit.NoWrap)
         # Add text copy button
         self.infoCopyButton = QtCopyToClipboardButton(self.infoTextBox)
         self.info_layout = QHBoxLayout()
         self.info_layout.addWidget(self.infoTextBox, 1)
-        self.info_layout.addWidget(
-            self.infoCopyButton, 0, Qt.AlignmentFlag.AlignTop
-        )
-        self.info_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.info_layout.addWidget(self.infoCopyButton, 0, Qt.AlignTop)
+        self.info_layout.setAlignment(Qt.AlignTop)
         self.layout.addLayout(self.info_layout)
 
         self.infoTextBox.setText(sys_info(as_html=True))
@@ -84,9 +78,7 @@ class QtAbout(QDialog):
         self.citationCopyButton = QtCopyToClipboardButton(self.citationTextBox)
         self.citation_layout = QHBoxLayout()
         self.citation_layout.addWidget(self.citationTextBox, 1)
-        self.citation_layout.addWidget(
-            self.citationCopyButton, 0, Qt.AlignmentFlag.AlignTop
-        )
+        self.citation_layout.addWidget(self.citationCopyButton, 0, Qt.AlignTop)
         self.layout.addLayout(self.citation_layout)
 
         self.setLayout(self.layout)
@@ -104,7 +96,7 @@ class QtAbout(QDialog):
         d = QtAbout(parent)
         d.setObjectName('QtAbout')
         d.setWindowTitle(trans._('About'))
-        d.setWindowModality(Qt.WindowModality.ApplicationModal)
+        d.setWindowModality(Qt.ApplicationModal)
         d.exec_()
 
 
@@ -122,7 +114,7 @@ class QtCopyToClipboardButton(QPushButton):
         The text box contents linked to copy to clipboard button.
     """
 
-    def __init__(self, text_edit) -> None:
+    def __init__(self, text_edit):
         super().__init__()
         self.setObjectName("QtCopyToClipboardButton")
         self.text_edit = text_edit

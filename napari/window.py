@@ -8,16 +8,17 @@ to server as a graphical user interface for napari.
 
 __all__ = ['Window']
 
-from napari.utils.translations import trans
+from .utils.translations import trans
 
 try:
-    from napari._qt import Window
+    from ._qt import Window
 
 except ImportError as e:
+
     err = e
 
     class Window:  # type: ignore
-        def __init__(self, *args, **kwargs) -> None:
+        def __init__(self, *args, **kwargs):
             pass
 
         def close(self):

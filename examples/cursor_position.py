@@ -3,13 +3,11 @@ Cursor position
 ===============
 
 Add small data to examine cursor positions
-
-.. tags:: interactivity
 """
 
 import numpy as np
-
 import napari
+
 
 viewer = napari.Viewer()
 image = np.array([[1, 0, 0, 1],

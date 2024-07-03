@@ -1,29 +1,20 @@
+import operator
 import sys
 import warnings
 from contextlib import contextmanager
-from typing import Any, Callable, ClassVar, Dict, Set, Tuple, Union
+from typing import Any, Callable, ClassVar, Dict, Set, Union
 
 import numpy as np
-from app_model.types import KeyBinding
+from pydantic import BaseModel, PrivateAttr, main, utils
 
-from napari._pydantic_compat import (
-    BaseModel,
-    ModelMetaclass,
-    PrivateAttr,
-    main,
-    utils,
-)
-from napari.utils.events.event import EmitterGroup, Event
-from napari.utils.misc import pick_equality_operator
-from napari.utils.translations import trans
+from ...utils.misc import pick_equality_operator
+from ..translations import trans
+from .event import EmitterGroup, Event
 
 # encoders for non-napari specific field types.  To declare a custom encoder
 # for a napari type, add a `_json_encode` method to the class itself.
 # it will be added to the model json_encoders in :func:`EventedMetaclass.__new__`
-_BASE_JSON_ENCODERS = {
-    np.ndarray: lambda arr: arr.tolist(),
-    KeyBinding: lambda v: str(v),
-}
+_BASE_JSON_ENCODERS = {np.ndarray: lambda arr: arr.tolist()}
 
 
 @contextmanager
@@ -72,7 +63,7 @@ def no_class_attributes():
         main.ClassAttribute = utils.ClassAttribute
 
 
-class EventedMetaclass(ModelMetaclass):
+class EventedMetaclass(main.ModelMetaclass):
     """pydantic ModelMetaclass that preps "equality checking" operations.
 
     A metaclass is the thing that "constructs" a class, and ``ModelMetaclass``
@@ -103,59 +94,22 @@ class EventedMetaclass(ModelMetaclass):
                 # required for pydantic>=1.8.0 due to:
                 # https://github.com/samuelcolvin/pydantic/pull/2064
                 EventedModel.__config__.json_encoders[f.type_] = encoder
-        # check for properties defined on the class, so we can allow them
-        # in EventedModel.__setattr__ and create events
-        cls.__properties__ = {}
+        # check for @_.setters defined on the class, so we can allow them
+        # in EventedModel.__setattr__
+        cls.__property_setters__ = {}
         for name, attr in namespace.items():
-            if isinstance(attr, property):
-                cls.__properties__[name] = attr
-                # determine compare operator
-                if (
-                    hasattr(attr.fget, "__annotations__")
-                    and "return" in attr.fget.__annotations__
-                    and not isinstance(
-                        attr.fget.__annotations__["return"], str
-                    )
-                ):
-                    cls.__eq_operators__[name] = pick_equality_operator(
-                        attr.fget.__annotations__["return"]
-                    )
-
+            if isinstance(attr, property) and attr.fset is not None:
+                cls.__property_setters__[name] = attr
         cls.__field_dependents__ = _get_field_dependents(cls)
         return cls
-
-
-def _update_dependents_from_property_code(
-    cls, prop_name, prop, deps, visited=()
-):
-    """Recursively find all the dependents of a property by inspecting the code object.
-
-    Update the given deps dictionary with the new findings.
-    """
-    for name in prop.fget.__code__.co_names:
-        if name in cls.__fields__:
-            deps.setdefault(name, set()).add(prop_name)
-        elif name in cls.__properties__ and name not in visited:
-            # to avoid infinite recursion, we shouldn't re-check getter we've already seen
-            visited = visited + (name,)
-            # sub_prop is the new property, but we leave prop_name the same
-            sub_prop = cls.__properties__[name]
-            _update_dependents_from_property_code(
-                cls, prop_name, sub_prop, deps, visited
-            )
 
 
 def _get_field_dependents(cls: 'EventedModel') -> Dict[str, Set[str]]:
     """Return mapping of field name -> dependent set of property names.
 
-    Dependencies will be guessed by inspecting the code of each property
-    in order to emit an event for a computed property when a model field
-    that it depends on changes (e.g: @property 'c' depends on model fields
-    'a' and 'b'). Alternatvely, dependencies may be declared excplicitly
-    in the Model Config.
-
-    Note: accessing a field with `getattr()` instead of dot notation won't
-    be automatically detected.
+    Dependencies may be declared in the Model Config to emit an event
+    for a computed property when a model field that it depends on changes
+    e.g.  (@property 'c' depends on model fields 'a' and 'b')
 
     Examples
     --------
@@ -171,42 +125,33 @@ def _get_field_dependents(cls: 'EventedModel') -> Dict[str, Set[str]]:
             def c(self, val: Sequence[int]):
                 self.a, self.b = val
 
-            @property
-            def d(self) -> int:
-                return sum(self.c)
-
-            @d.setter
-            def d(self, val: int):
-                self.c = [val // 2, val // 2]
-
             class Config:
-                dependencies={
-                    'c': ['a', 'b'],
-                    'd': ['a', 'b']
-                }
+                dependencies={'c': ['a', 'b']}
     """
-    if not cls.__properties__:
+    if not cls.__property_setters__:
         return {}
 
     deps: Dict[str, Set[str]] = {}
 
     _deps = getattr(cls.__config__, 'dependencies', None)
     if _deps:
-        for prop_name, fields in _deps.items():
-            if prop_name not in cls.__properties__:
+        for prop, fields in _deps.items():
+            if prop not in cls.__property_setters__:
                 raise ValueError(
-                    'Fields with dependencies must be properties. '
-                    f'{prop_name!r} is not.'
+                    'Fields with dependencies must be property.setters. '
+                    f'{prop!r} is not.'
                 )
             for field in fields:
                 if field not in cls.__fields__:
                     warnings.warn(f"Unrecognized field dependency: {field}")
-                deps.setdefault(field, set()).add(prop_name)
+                deps.setdefault(field, set()).add(prop)
     else:
         # if dependencies haven't been explicitly defined, we can glean
         # them from the property.fget code object:
-        for prop_name, prop in cls.__properties__.items():
-            _update_dependents_from_property_code(cls, prop_name, prop, deps)
+        for prop, setter in cls.__property_setters__.items():
+            for name in setter.fget.__code__.co_names:
+                if name in cls.__fields__:
+                    deps.setdefault(name, set()).add(prop)
     return deps
 
 
@@ -220,15 +165,12 @@ class EventedModel(BaseModel, metaclass=EventedMetaclass):
     # add private attributes for event emission
     _events: EmitterGroup = PrivateAttr(default_factory=EmitterGroup)
 
-    # mapping of name -> property obj for methods that are properties
-    __properties__: ClassVar[Dict[str, property]]
+    # mapping of name -> property obj for methods that are property setters
+    __property_setters__: ClassVar[Dict[str, property]]
     # mapping of field name -> dependent set of property names
     # when field is changed, an event for dependent properties will be emitted.
     __field_dependents__: ClassVar[Dict[str, Set[str]]]
     __eq_operators__: ClassVar[Dict[str, Callable[[Any, Any], bool]]]
-    _changes_queue: Dict[str, Any] = PrivateAttr(default_factory=dict)
-    _primary_changes: Set[str] = PrivateAttr(default_factory=set)
-    _delay_check_semaphore: int = PrivateAttr(0)
     __slots__: ClassVar[Set[str]] = {"__weakref__"}  # type: ignore
 
     # pydantic BaseModel configuration.  see:
@@ -244,162 +186,61 @@ class EventedModel(BaseModel, metaclass=EventedMetaclass):
         # https://pydantic-docs.helpmanual.io/usage/models/#private-model-attributes
         underscore_attrs_are_private = True
         # whether to validate field defaults (default: False)
-        validate_all = True
+        # see https://github.com/napari/napari/pull/4138 before changing.
+        validate_all = False
         # https://pydantic-docs.helpmanual.io/usage/exporting_models/#modeljson
         # NOTE: json_encoders are also added EventedMetaclass.__new__ if the
         # field declares a _json_encode method.
         json_encoders = _BASE_JSON_ENCODERS
-        # extra = Extra.forbid
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
         self._events.source = self
         # add event emitters for each field which is mutable
-        field_events = [
+        event_names = [
             name
             for name, field in self.__fields__.items()
             if field.field_info.allow_mutation
         ]
-
-        self._events.add(
-            **dict.fromkeys(field_events + list(self.__properties__))
-        )
-
-        # while seemingly redundant, this next line is very important to maintain
-        # correct sources; see https://github.com/napari/napari/pull/4138
-        # we solve it by re-setting the source after initial validation, which allows
-        # us to use `validate_all = True`
-        self._reset_event_source()
+        event_names.extend(self.__property_setters__)
+        self._events.add(**dict.fromkeys(event_names))
 
     def _super_setattr_(self, name: str, value: Any) -> None:
         # pydantic will raise a ValueError if extra fields are not allowed
-        # so we first check to see if this field is a property
+        # so we first check to see if this field has a property.setter.
         # if so, we use it instead.
-        if name in self.__properties__:
-            setter = self.__properties__[name].fset
-            if setter is None:
-                # raise same error as normal properties
-                raise AttributeError(f"can't set attribute '{name}'")
-            setter(self, value)
+        if name in self.__property_setters__:
+            self.__property_setters__[name].fset(self, value)
         else:
             super().__setattr__(name, value)
-
-    def _check_if_differ(self, name: str, old_value: Any) -> Tuple[bool, Any]:
-        """
-        Check new value of a field and emit event if it is different from the old one.
-
-        Returns True if data changed, else False. Return current value.
-        """
-        new_value = getattr(self, name, object())
-        if name in self.__eq_operators__:
-            are_equal = self.__eq_operators__[name]
-        else:
-            are_equal = pick_equality_operator(new_value)
-        return not are_equal(new_value, old_value), new_value
 
     def __setattr__(self, name: str, value: Any) -> None:
-        if name not in getattr(self, 'events', {}):
-            # This is a workaround needed because `EventedConfigFileSettings` uses
-            # `_config_path` before calling the superclass constructor
-            super().__setattr__(name, value)
-            return
-        with ComparisonDelayer(self):
-            self._primary_changes.add(name)
-            self._setattr_impl(name, value)
-
-    def _check_if_values_changed_and_emit_if_needed(self):
-        """
-        Check if field values changed and emit events if needed.
-
-        The advantage of moving this to the end of all the modifications is
-        that comparisons will be performed only once for every potential change.
-        """
-        if self._delay_check_semaphore > 0 or len(self._changes_queue) == 0:
-            # do not run whole machinery if there is no need
-            return
-        to_emit = []
-        for name in self._primary_changes:
-            # primary changes should contains only fields that are changed directly by assigment
-            if name not in self._changes_queue:
-                continue
-            old_value = self._changes_queue[name]
-            if (res := self._check_if_differ(name, old_value))[0]:
-                to_emit.append((name, res[1]))
-            self._changes_queue.pop(name)
-        if not to_emit:
-            # If no direct changes was made then we can skip whole machinery
-            self._changes_queue.clear()
-            self._primary_changes.clear()
-            return
-        for name, old_value in self._changes_queue.items():
-            # check if any of dependent properties changed
-            if (res := self._check_if_differ(name, old_value))[0]:
-                to_emit.append((name, res[1]))
-        self._changes_queue.clear()
-        self._primary_changes.clear()
-
-        with ComparisonDelayer(self):
-            # Again delay comparison to avoid having events caused by callback functions
-            for name, new_value in to_emit:
-                getattr(self.events, name)(value=new_value)
-
-    def _setattr_impl(self, name: str, value: Any) -> None:
         if name not in getattr(self, 'events', {}):
             # fallback to default behavior
             self._super_setattr_(name, value)
             return
 
         # grab current value
-        field_dep = self.__field_dependents__.get(name, set())
-        has_callbacks = {
-            name: bool(getattr(self.events, name).callbacks)
-            for name in field_dep
-        }
-        emitter = getattr(self.events, name)
-        # equality comparisons may be expensive, so just avoid them if
-        # event has no callbacks connected
-        if not (
-            emitter.callbacks
-            or self._events.callbacks
-            or any(has_callbacks.values())
-        ):
-            self._super_setattr_(name, value)
-            return
-
-        dep_with_callbacks = [
-            dep for dep, has_cb in has_callbacks.items() if has_cb
-        ]
-
-        if name not in self._changes_queue:
-            self._changes_queue[name] = getattr(self, name, object())
-
-        for dep in dep_with_callbacks:
-            if dep not in self._changes_queue:
-                self._changes_queue[dep] = getattr(self, dep, object())
+        before = getattr(self, name, object())
 
         # set value using original setter
         self._super_setattr_(name, value)
+
+        # if different we emit the event with new value
+        after = getattr(self, name)
+        are_equal = self.__eq_operators__.get(name, operator.eq)
+        if not are_equal(after, before):
+            getattr(self.events, name)(value=after)  # emit event
+
+            # emit events for any dependent computed property setters as well
+            for dep in self.__field_dependents__.get(name, {}):
+                getattr(self.events, dep)(value=getattr(self, dep))
 
     # expose the private EmitterGroup publically
     @property
     def events(self) -> EmitterGroup:
         return self._events
-
-    def _reset_event_source(self):
-        """
-        set the event sources of self and all the children to the correct values
-        """
-        # events are all messed up due to objects being probably
-        # recreated arbitrarily during validation
-        self.events.source = self
-        for name in self.__fields__:
-            child = getattr(self, name)
-            if isinstance(child, EventedModel):
-                # TODO: this isinstance check should be EventedMutables in the future
-                child._reset_event_source()
-            elif name in self.events.emitters:
-                getattr(self.events, name).source = self
 
     @property
     def _defaults(self):
@@ -436,7 +277,7 @@ class EventedModel(BaseModel, metaclass=EventedMetaclass):
         if isinstance(values, self.__class__):
             values = values.dict()
         if not isinstance(values, dict):
-            raise TypeError(
+            raise ValueError(
                 trans._(
                     "Unsupported update from {values}",
                     deferred=True,
@@ -463,15 +304,17 @@ class EventedModel(BaseModel, metaclass=EventedMetaclass):
         like arrays, whose truth value is often ambiguous. ``__eq_operators__``
         is constructed in ``EqualityMetaclass.__new__``
         """
-        if self is other:
-            return True
         if not isinstance(other, EventedModel):
             return self.dict() == other
-        if self.__class__ != other.__class__:
-            return False
-        for f_name in self.__fields__:
-            eq = self.__eq_operators__[f_name]
-            if not eq(getattr(self, f_name), getattr(other, f_name)):
+
+        for f_name, eq in self.__eq_operators__.items():
+            if f_name not in other.__eq_operators__:
+                return False
+            if (
+                hasattr(self, f_name)
+                and hasattr(other, f_name)
+                and not eq(getattr(self, f_name), getattr(other, f_name))
+            ):
                 return False
         return True
 
@@ -506,15 +349,3 @@ def get_defaults(obj: BaseModel):
             d = get_defaults(v.type_)
         dflt[k] = d
     return dflt
-
-
-class ComparisonDelayer:
-    def __init__(self, target: EventedModel):
-        self._target = target
-
-    def __enter__(self):
-        self._target._delay_check_semaphore += 1
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self._target._delay_check_semaphore -= 1
-        self._target._check_if_values_changed_and_emit_if_needed()

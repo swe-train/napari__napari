@@ -4,9 +4,9 @@ from typing import List, Optional, Tuple, TypeVar
 
 from qtpy.QtCore import QMimeData, QModelIndex, Qt
 
-from napari._qt.containers._base_item_model import _BaseEventedItemModel
-from napari.utils.translations import trans
-from napari.utils.tree import Group, Node
+from ...utils.translations import trans
+from ...utils.tree import Group, Node
+from ._base_item_model import _BaseEventedItemModel
 
 logger = logging.getLogger(__name__)
 NodeType = TypeVar("NodeType", bound=Node)
@@ -34,14 +34,14 @@ class QtNodeTreeModel(_BaseEventedItemModel[NodeType]):
         its own "ItemDataRole".
         """
         item = self.getItem(index)
-        if role == Qt.ItemDataRole.DisplayRole:
+        if role == Qt.DisplayRole:
             return item._node_name()
-        if role == Qt.ItemDataRole.UserRole:
+        if role == Qt.UserRole:
             return self.getItem(index)
         return None
 
     def index(
-        self, row: int, column: int = 0, parent: Optional[QModelIndex] = None
+        self, row: int, column: int = 0, parent: QModelIndex = QModelIndex()
     ) -> QModelIndex:
         """Return a QModelIndex for item at `row`, `column` and `parent`."""
 
@@ -60,8 +60,7 @@ class QtNodeTreeModel(_BaseEventedItemModel[NodeType]):
         #   2. never store the object (and incur the penalty of
         #      self.getItem(idx) each time you want to get the value of an idx)
         #   3. Have special treatment when we encounter integers in the model
-        if parent is None:
-            parent = QModelIndex()
+
         return (
             self.createIndex(row, column, self.getItem(parent)[row])
             if self.hasIndex(row, column, parent)
@@ -152,19 +151,18 @@ class QtNodeTreeModel(_BaseEventedItemModel[NodeType]):
         bool ``True`` if the `data` and `action` were handled by the model;
             otherwise returns ``False``.
         """
-        if not data or action != Qt.DropAction.MoveAction:
+        if not data or action != Qt.MoveAction:
             return False
         if not data.hasFormat(self.mimeTypes()[0]):
             return False
 
         if isinstance(data, NodeMimeData):
             dest_idx = self.getItem(parent).index_from_root()
-            dest_idx = (*dest_idx, destRow)
+            dest_idx = dest_idx + (destRow,)
             moving_indices = data.node_indices()
 
             logger.debug(
-                "dropMimeData: indices {ind} ➡ {idx}",
-                extra={"ind": moving_indices, "idx": dest_idx},
+                f"dropMimeData: indices {moving_indices} ➡ {dest_idx}"
             )
 
             if len(moving_indices) == 1:
@@ -211,7 +209,7 @@ class QtNodeTreeModel(_BaseEventedItemModel[NodeType]):
 class NodeMimeData(QMimeData):
     """An object to store Node data during a drag operation."""
 
-    def __init__(self, nodes: Optional[List[NodeType]] = None) -> None:
+    def __init__(self, nodes: Optional[List[NodeType]] = None):
         super().__init__()
         self.nodes: List[NodeType] = nodes or []
         if nodes:

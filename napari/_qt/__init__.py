@@ -3,40 +3,16 @@ import sys
 from pathlib import Path
 from warnings import warn
 
-from napari.utils.translations import trans
+from ..utils.translations import trans
 
 try:
-    from qtpy import API_NAME, QT_VERSION, QtCore
+    from qtpy import API_NAME, QtCore
 except Exception as e:
     if 'No Qt bindings could be found' in str(e):
-        from inspect import cleandoc
-
-        installed_with_conda = list(
-            Path(sys.prefix, "conda-meta").glob("napari-*.json")
-        )
-
-        raise ImportError(
+        raise type(e)(
             trans._(
-                cleandoc(
-                    """
-                No Qt bindings could be found.
-
-                napari requires either PyQt5 (default) or PySide2 to be installed in the environment.
-
-                With pip, you can install either with:
-                  $ pip install -U 'napari[all]'  # default choice
-                  $ pip install -U 'napari[pyqt5]'
-                  $ pip install -U 'napari[pyside2]'
-
-                With conda, you need to do:
-                  $ conda install -c conda-forge pyqt
-                  $ conda install -c conda-forge pyside2
-
-                Our heuristics suggest you are using '{tool}' to manage your packages.
-                """
-                ),
+                "No Qt bindings could be found.\n\nnapari requires either PyQt5 or PySide2 to be installed in the environment.\nTo install the default backend (currently PyQt5), run \"pip install napari[all]\" \nYou may also use \"pip install napari[pyside2]\"for Pyside2, or \"pip install napari[pyqt5]\" for PyQt5",
                 deferred=True,
-                tool="conda" if installed_with_conda else "pip",
             )
         ) from e
     raise
@@ -50,19 +26,6 @@ if API_NAME == 'PySide2':
     os.environ['QT_PLUGIN_PATH'] = str(
         Path(PySide2.__file__).parent / 'Qt' / 'plugins'
     )
-
-if API_NAME == 'PySide6' and sys.version_info[:2] < (3, 10):
-    from packaging import version
-
-    assert isinstance(QT_VERSION, str)
-
-    if version.parse(QT_VERSION) > version.parse("6.3.1"):
-        raise RuntimeError(
-            trans._(
-                "Napari is not expected to work with PySide6 >= 6.3.2 on Python < 3.10",
-                deferred=True,
-            )
-        )
 
 
 # When QT is not the specific version, we raise a warning:
@@ -84,10 +47,8 @@ if tuple(int(x) for x in QtCore.__version__.split('.')[:3]) < (5, 12, 3):
             deferred=True,
             version=QtCore.__version__,
         )
-    warn(message=warn_message, stacklevel=1)
+    warn(message=warn_message)
 
 
-from napari._qt.qt_event_loop import get_app, gui_qt, quit_app, run
-from napari._qt.qt_main_window import Window
-
-__all__ = ["get_app", "gui_qt", "quit_app", "run", "Window"]
+from .qt_event_loop import get_app, gui_qt, quit_app, run
+from .qt_main_window import Window

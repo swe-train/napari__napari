@@ -1,28 +1,8 @@
 from collections import OrderedDict
 from enum import auto
-from typing import Literal, Tuple
 
-from napari.utils.misc import StringEnum
-from napari.utils.translations import trans
-
-InterpolationStr = Literal[
-    "bessel",
-    "cubic",
-    "linear",
-    "blackman",
-    "catrom",
-    "gaussian",
-    "hamming",
-    "hanning",
-    "hermite",
-    "kaiser",
-    "lanczos",
-    "mitchell",
-    "nearest",
-    "spline16",
-    "spline36",
-    "custom",
-]
+from ...utils.misc import StringEnum
+from ...utils.translations import trans
 
 
 class Interpolation(StringEnum):
@@ -35,8 +15,8 @@ class Interpolation(StringEnum):
     """
 
     BESSEL = auto()
-    CUBIC = auto()
-    LINEAR = auto()
+    BICUBIC = auto()
+    BILINEAR = auto()
     BLACKMAN = auto()
     CATROM = auto()
     GAUSSIAN = auto()
@@ -49,28 +29,35 @@ class Interpolation(StringEnum):
     NEAREST = auto()
     SPLINE16 = auto()
     SPLINE36 = auto()
-    CUSTOM = auto()
 
     @classmethod
-    def view_subset(
-        cls,
-    ) -> Tuple[
-        "Interpolation",
-        "Interpolation",
-        "Interpolation",
-        "Interpolation",
-        "Interpolation",
-    ]:
+    def view_subset(cls):
         return (
-            cls.CUBIC,
-            cls.LINEAR,
+            cls.BICUBIC,
+            cls.BILINEAR,
             cls.KAISER,
             cls.NEAREST,
             cls.SPLINE36,
         )
 
-    def __str__(self) -> InterpolationStr:
-        return self.value
+
+class Interpolation3D(StringEnum):
+    """INTERPOLATION: Vispy interpolation mode for volume rendering."""
+
+    LINEAR = auto()
+    NEAREST = auto()
+
+
+class Mode(StringEnum):
+    """
+    Mode: Interactive mode. The normal, default mode is PAN_ZOOM, which
+    allows for normal interactivity with the canvas.
+
+    TRANSFORM allows for manipulation of the layer transform.
+    """
+
+    TRANSFORM = auto()
+    PAN_ZOOM = auto()
 
 
 class ImageRendering(StringEnum):
@@ -106,17 +93,6 @@ class ImageRendering(StringEnum):
     AVERAGE = auto()
 
 
-ImageRenderingStr = Literal[
-    "translucent",
-    "additive",
-    "iso",
-    "mip",
-    "minip",
-    "attenuated_mip",
-    "average",
-]
-
-
 class VolumeDepiction(StringEnum):
     """Depiction: 3D depiction mode for images.
 
@@ -135,21 +111,3 @@ VOLUME_DEPICTION_TRANSLATION = OrderedDict(
         (VolumeDepiction.PLANE, trans._('plane')),
     ]
 )
-
-
-class ImageProjectionMode(StringEnum):
-    """
-    Projection mode for aggregating a thick nD slice onto displayed dimensions.
-
-        * NONE: ignore slice thickness, only using the dims point
-        * SUM: sum data across the thick slice
-        * MEAN: average data across the thick slice
-        * MAX: display the maximum value across the thick slice
-        * MIN: display the minimum value across the thick slice
-    """
-
-    NONE = auto()
-    SUM = auto()
-    MEAN = auto()
-    MAX = auto()
-    MIN = auto()

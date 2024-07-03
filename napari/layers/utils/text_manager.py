@@ -1,29 +1,27 @@
 import warnings
 from copy import deepcopy
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
+from pydantic import PositiveInt, validator
 
-from napari._pydantic_compat import PositiveInt, validator
-from napari.layers.base._base_constants import Blending
-from napari.layers.utils._text_constants import Anchor
-from napari.layers.utils._text_utils import get_text_anchors
-from napari.layers.utils.color_encoding import (
-    ColorArray,
-    ColorEncoding,
-    ConstantColorEncoding,
-)
-from napari.layers.utils.layer_utils import _validate_features
-from napari.layers.utils.string_encoding import (
+from ...utils.colormaps.standardize_color import transform_color
+from ...utils.events import Event, EventedModel
+from ...utils.events.custom_types import Array
+from ...utils.translations import trans
+from ..base._base_constants import Blending
+from ._text_constants import Anchor
+from ._text_utils import get_text_anchors
+from .layer_utils import _validate_features
+from .string_encoding import (
     ConstantStringEncoding,
     StringArray,
     StringEncoding,
+    StringEncodingArgument,
+    validate_string_encoding,
 )
-from napari.layers.utils.style_encoding import _get_style_values
-from napari.utils.events import Event, EventedModel
-from napari.utils.events.custom_types import Array
-from napari.utils.translations import trans
+from .style_encoding import _get_style_values
 
 
 class TextManager(EventedModel):
@@ -64,8 +62,9 @@ class TextManager(EventedModel):
         True if the text should be displayed, false otherwise.
     size : float
         Font size of the text, which must be positive. Default value is 12.
-    color : ColorEncoding
-        Defines the color for each text element.
+    color : array
+        Font color for the text as an [R, G, B, A] array. Can also be expressed
+        as a string on construction or setting.
     blending : Blending
         The blending mode that determines how RGB and alpha values of the layer
         visual get mixed. Allowed values are 'translucent' and 'additive'.
@@ -75,15 +74,15 @@ class TextManager(EventedModel):
         The location of the text origin relative to the bounding box.
         Should be 'center', 'upper_left', 'upper_right', 'lower_left', or 'lower_right'.
     translation : np.ndarray
-        Offset from the anchor point in data coordinates.
+        Offset from the anchor point.
     rotation : float
         Angle of the text elements around the anchor point. Default value is 0.
     """
 
     string: StringEncoding = ConstantStringEncoding(constant='')
-    color: ColorEncoding = ConstantColorEncoding(constant='cyan')
     visible: bool = True
     size: PositiveInt = 12
+    color: Array[float, (4,)] = 'cyan'
     blending: Blending = Blending.TRANSLUCENT
     anchor: Anchor = Anchor.CENTER
     # Use a scalar default translation to broadcast to any dimensionality.
@@ -92,7 +91,7 @@ class TextManager(EventedModel):
 
     def __init__(
         self, text=None, properties=None, n_text=None, features=None, **kwargs
-    ) -> None:
+    ):
         if n_text is not None:
             _warn_about_deprecated_n_text_parameter()
         if properties is not None:
@@ -109,7 +108,8 @@ class TextManager(EventedModel):
             _warn_about_deprecated_text_parameter()
             kwargs['string'] = text
         super().__init__(**kwargs)
-        self.apply(features)
+        self.events.add(values=Event)
+        self.string._apply(features)
 
     @property
     def values(self):
@@ -130,12 +130,9 @@ class TextManager(EventedModel):
             The features table of a layer.
         """
         self.string._clear()
-        self.color._clear()
         self.string._apply(features)
+        self.events.string()
         self.events.values()
-        self.color._apply(features)
-        # Trigger the main event for vispy layers.
-        self.events(Event(type_name='refresh'))
 
     def refresh_text(self, properties: Dict[str, np.ndarray]):
         """Refresh all of the current text elements using updated properties values
@@ -147,7 +144,7 @@ class TextManager(EventedModel):
         """
         warnings.warn(
             trans._(
-                'TextManager.refresh_text is deprecated since 0.4.16. Use TextManager.refresh instead.'
+                'TextManager.refresh_text is deprecated. Use TextManager.refresh instead.'
             ),
             DeprecationWarning,
             stacklevel=2,
@@ -167,7 +164,7 @@ class TextManager(EventedModel):
         """
         warnings.warn(
             trans._(
-                'TextManager.add is deprecated since 0.4.16. Use TextManager.apply instead.'
+                'TextManager.add is deprecated. Use TextManager.apply instead.'
             ),
             DeprecationWarning,
             stacklevel=2,
@@ -181,8 +178,6 @@ class TextManager(EventedModel):
         values = self.string(features)
         self.string._append(values)
         self.events.values()
-        colors = self.color(features)
-        self.color._append(colors)
 
     def remove(self, indices_to_remove: Union[range, set, list, np.ndarray]):
         """Remove the indicated text elements
@@ -196,7 +191,6 @@ class TextManager(EventedModel):
             indices_to_remove = list(indices_to_remove)
         self.string._delete(indices_to_remove)
         self.events.values()
-        self.color._delete(indices_to_remove)
 
     def apply(self, features: Any):
         """Applies any encodings to be the same length as the given features,
@@ -209,26 +203,18 @@ class TextManager(EventedModel):
         """
         self.string._apply(features)
         self.events.values()
-        self.color._apply(features)
 
     def _copy(self, indices: List[int]) -> dict:
         """Copies all encoded values at the given indices."""
-        return {
-            'string': _get_style_values(self.string, indices),
-            'color': _get_style_values(self.color, indices, value_ndim=1),
-        }
+        return {'string': _get_style_values(self.string, indices)}
 
-    def _paste(self, *, string: StringArray, color: ColorArray):
+    def _paste(self, *, string: StringArray):
         """Pastes encoded values to the end of the existing values."""
         self.string._append(string)
         self.events.values()
-        self.color._append(color)
 
     def compute_text_coords(
-        self,
-        view_data: np.ndarray,
-        ndisplay: int,
-        order: Optional[Tuple[int, ...]] = None,
+        self, view_data: np.ndarray, ndisplay: int
     ) -> Tuple[np.ndarray, str, str]:
         """Calculate the coordinates for each text element in view
 
@@ -238,9 +224,6 @@ class TextManager(EventedModel):
             The in view data from the layer
         ndisplay : int
             The number of dimensions being displayed in the viewer
-        order : tuple of ints, optional
-            The display order of the dimensions in the layer.
-            If None, implies ``range(ndisplay)``.
 
         Returns
         -------
@@ -254,20 +237,7 @@ class TextManager(EventedModel):
         anchor_coords, anchor_x, anchor_y = get_text_anchors(
             view_data, ndisplay, self.anchor
         )
-        # The translation should either be a scalar or be as long as
-        # the dimensionality of the associated layer.
-        # We do not have direct knowledge of that dimensionality, but
-        # can infer enough information to get the translation coordinates
-        # that need to offset the anchor coordinates.
-        ndim_coords = min(ndisplay, anchor_coords.shape[1])
-        translation = self.translation
-        if translation.size > 1:
-            if order is None:
-                translation = self.translation[-ndim_coords:]
-            else:
-                order_displayed = list(order[-ndim_coords:])
-                translation = self.translation[order_displayed]
-        text_coords = anchor_coords + translation
+        text_coords = anchor_coords + self.translation
         return text_coords, anchor_x, anchor_y
 
     def view_text(self, indices_view: np.ndarray) -> np.ndarray:
@@ -289,10 +259,6 @@ class TextManager(EventedModel):
             if values.ndim == 0
             else values
         )
-
-    def _view_color(self, indices_view: np.ndarray) -> np.ndarray:
-        """Get the colors of the text elements at the given indices."""
-        return _get_style_values(self.color, indices_view, value_ndim=1)
 
     @classmethod
     def _from_layer(
@@ -320,8 +286,6 @@ class TextManager(EventedModel):
             kwargs = text.dict()
         elif isinstance(text, dict):
             kwargs = deepcopy(text)
-        elif text is None:
-            kwargs = {'string': ConstantStringEncoding(constant='')}
         else:
             kwargs = {'string': text}
         kwargs['features'] = features
@@ -364,7 +328,15 @@ class TextManager(EventedModel):
         # values if needed.
         self.apply(features)
 
-    @validator('blending', pre=True, always=True, allow_reuse=True)
+    @validator('string', pre=True, always=True)
+    def _check_string(cls, string: StringEncodingArgument):
+        return validate_string_encoding(string)
+
+    @validator('color', pre=True, always=True)
+    def _check_color(cls, color):
+        return transform_color(color)[0]
+
+    @validator('blending', pre=True, always=True)
     def _check_blending_mode(cls, blending):
         blending_mode = Blending(blending)
 
@@ -385,9 +357,7 @@ class TextManager(EventedModel):
 
 def _warn_about_deprecated_text_parameter():
     warnings.warn(
-        trans._(
-            'text is a deprecated parameter since 0.4.16. Use string instead.'
-        ),
+        trans._('text is a deprecated parameter. Use string instead.'),
         DeprecationWarning,
         stacklevel=2,
     )
@@ -395,9 +365,7 @@ def _warn_about_deprecated_text_parameter():
 
 def _warn_about_deprecated_properties_parameter():
     warnings.warn(
-        trans._(
-            'properties is a deprecated parameter since 0.4.16. Use features instead.'
-        ),
+        trans._('properties is a deprecated parameter. Use features instead.'),
         DeprecationWarning,
         stacklevel=2,
     )
@@ -405,9 +373,7 @@ def _warn_about_deprecated_properties_parameter():
 
 def _warn_about_deprecated_n_text_parameter():
     warnings.warn(
-        trans._(
-            'n_text is a deprecated parameter since 0.4.16. Use features instead.'
-        ),
+        trans._('n_text is a deprecated parameter. Use features instead.'),
         DeprecationWarning,
         stacklevel=2,
     )
@@ -415,9 +381,7 @@ def _warn_about_deprecated_n_text_parameter():
 
 def _warn_about_deprecated_values_parameter():
     warnings.warn(
-        trans._(
-            'values is a deprecated parameter since 0.4.16. Use string instead.'
-        ),
+        trans._('values is a deprecated parameter. Use string instead.'),
         DeprecationWarning,
         stacklevel=2,
     )

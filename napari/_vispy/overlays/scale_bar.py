@@ -1,54 +1,106 @@
+"""Scale Bar overlay."""
 import bisect
-from decimal import Decimal
-from math import floor, log
-from typing import Tuple
 
 import numpy as np
-import pint
+from vispy.scene.visuals import Line, Text
+from vispy.visuals.transforms import STTransform
 
-from napari._vispy.overlays.base import ViewerOverlayMixin, VispyCanvasOverlay
-from napari._vispy.visuals.scale_bar import ScaleBar
-from napari.utils._units import PREFERRED_VALUES, get_unit_registry
-from napari.utils.colormaps.standardize_color import transform_color
-from napari.utils.theme import get_theme
+from ...components._viewer_constants import Position
+from ...utils._units import PREFERRED_VALUES, get_unit_registry
+from ...utils.colormaps.standardize_color import transform_color
+from ...utils.theme import get_theme
+from ...utils.translations import trans
 
 
-class VispyScaleBarOverlay(ViewerOverlayMixin, VispyCanvasOverlay):
+class VispyScaleBarOverlay:
     """Scale bar in world coordinates."""
 
-    def __init__(self, *, viewer, overlay, parent=None) -> None:
+    def __init__(self, viewer, parent=None, order=0):
+        self._viewer = viewer
+
+        self._data = np.array(
+            [
+                [0, 0, -1],
+                [1, 0, -1],
+                [0, -5, -1],
+                [0, 5, -1],
+                [1, -5, -1],
+                [1, 5, -1],
+            ]
+        )
+        self._default_color = np.array([1, 0, 1, 1])
         self._target_length = 150
         self._scale = 1
-        self._unit: pint.Unit
+        self._quantity = None
+        self._unit_reg = None
 
-        super().__init__(
-            node=ScaleBar(), viewer=viewer, overlay=overlay, parent=parent
+        self.node = Line(
+            connect='segments', method='gl', parent=parent, width=3
         )
-        self.x_size = 150  # will be updated on zoom anyways
-        # need to change from defaults because the anchor is in the center
-        self.y_offset = 20
-        self.y_size = 5
+        self.node.order = order
+        self.node.transform = STTransform()
 
-        self.overlay.events.box.connect(self._on_box_change)
-        self.overlay.events.box_color.connect(self._on_data_change)
-        self.overlay.events.color.connect(self._on_data_change)
-        self.overlay.events.colored.connect(self._on_data_change)
-        self.overlay.events.font_size.connect(self._on_text_change)
-        self.overlay.events.ticks.connect(self._on_data_change)
-        self.overlay.events.unit.connect(self._on_unit_change)
+        # In order for the text to always appear centered on the scale bar,
+        # the text node should use the line node as the parent.
+        self.text_node = Text(pos=[0.5, -1], parent=self.node)
+        self.text_node.order = order
+        self.text_node.transform = STTransform()
+        self.text_node.font_size = 10
+        self.text_node.anchors = ("center", "center")
+        self.text_node.text = f"{1}px"
 
-        self.viewer.events.theme.connect(self._on_data_change)
-        self.viewer.camera.events.zoom.connect(self._on_zoom_change)
+        # the two canvas are not the same object, better be safe.
+        self.node.canvas._backend.destroyed.connect(self._set_canvas_none)
+        self.text_node.canvas._backend.destroyed.connect(self._set_canvas_none)
+        assert self.node.canvas is self.text_node.canvas
+        # End Note
 
-        self.reset()
+        self._viewer.events.theme.connect(self._on_data_change)
+        self._viewer.scale_bar.events.visible.connect(self._on_visible_change)
+        self._viewer.scale_bar.events.colored.connect(self._on_data_change)
+        self._viewer.scale_bar.events.ticks.connect(self._on_data_change)
+        self._viewer.scale_bar.events.position.connect(
+            self._on_position_change
+        )
+        self._viewer.camera.events.zoom.connect(self._on_zoom_change)
+        self._viewer.scale_bar.events.font_size.connect(self._on_text_change)
+        self._viewer.scale_bar.events.unit.connect(self._on_dimension_change)
 
-    def _on_unit_change(self):
-        self._unit = get_unit_registry()(self.overlay.unit)
+        self._on_visible_change()
+        self._on_data_change()
+        self._on_dimension_change()
+        self._on_position_change()
+
+    def _set_canvas_none(self):
+        self.node._set_canvas(None)
+        self.text_node._set_canvas(None)
+
+    @property
+    def unit_registry(self):
+        """Get unit registry.
+
+        Rather than instantiating UnitRegistry earlier on, it is instantiated
+        only when it is needed. The reason for this is that importing `pint`
+        at module level can be time consuming.
+
+        Notes
+        -----
+        https://github.com/napari/napari/pull/2617#issuecomment-827716325
+        https://github.com/napari/napari/pull/2325
+        """
+        if self._unit_reg is None:
+            self._unit_reg = get_unit_registry()
+        return self._unit_reg
+
+    def _on_dimension_change(self):
+        """Update dimension."""
+        if not self._viewer.scale_bar.visible and self._unit_reg is None:
+            return
+        unit = self._viewer.scale_bar.unit
+        self._quantity = self.unit_registry(unit)
         self._on_zoom_change(force=True)
 
-    def _calculate_best_length(
-        self, desired_length: float
-    ) -> Tuple[float, pint.Quantity]:
+    def _calculate_best_length(self, desired_length: float):
         """Calculate new quantity based on the pixel length of the bar.
 
         Parameters
@@ -64,46 +116,35 @@ class VispyScaleBarOverlay(ViewerOverlayMixin, VispyCanvasOverlay):
         new_quantity : pint.Quantity
             New quantity with abbreviated base unit.
         """
-        current_quantity = self._unit * desired_length
+        current_quantity = self._quantity * desired_length
         # convert the value to compact representation
         new_quantity = current_quantity.to_compact()
         # calculate the scaling factor taking into account any conversion
         # that might have occurred (e.g. um -> cm)
         factor = current_quantity / new_quantity
 
-        # select value closest to one of our preferred values and also
-        # validate if quantity is dimensionless and lower than 1 to prevent
-        # the scale bar to extend beyond the canvas when zooming.
-        # If the value falls in those conditions, we use the corresponding
-        # prefered value but scaled to take into account the actual value
-        # magnitude. See https://github.com/napari/napari/issues/5914
-        magnitude_1000 = floor(log(new_quantity.magnitude, 1000))
-        scaled_magnitude = new_quantity.magnitude * 1000 ** (-magnitude_1000)
-        index = bisect.bisect_left(PREFERRED_VALUES, scaled_magnitude)
+        # select value closest to one of our preferred values
+        index = bisect.bisect_left(PREFERRED_VALUES, new_quantity.magnitude)
         if index > 0:
             # When we get the lowest index of the list, removing -1 will
             # return the last index.
             index -= 1
-        new_value: float = PREFERRED_VALUES[index]
-        if new_quantity.dimensionless and new_quantity.magnitude < 1:
-            # using Decimal is necessary to avoid `4.999999e-6`
-            # at really small scale.
-            new_value = float(
-                Decimal(new_value) * Decimal(1000) ** magnitude_1000
-            )
+        new_value = PREFERRED_VALUES[index]
 
         # get the new pixel length utilizing the user-specified units
         new_length = (
-            (new_value * factor) / (1 * self._unit).magnitude
+            (new_value * factor) / self._quantity.magnitude
         ).magnitude
         new_quantity = new_value * new_quantity.units
         return new_length, new_quantity
 
     def _on_zoom_change(self, *, force: bool = False):
         """Update axes length based on zoom scale."""
+        if not self._viewer.scale_bar.visible:
+            return
 
         # If scale has not changed, do not redraw
-        scale = 1 / self.viewer.camera.zoom
+        scale = 1 / self._viewer.camera.zoom
         if abs(np.log10(self._scale) - np.log10(scale)) < 1e-4 and not force:
             return
         self._scale = scale
@@ -122,50 +163,92 @@ class VispyScaleBarOverlay(ViewerOverlayMixin, VispyCanvasOverlay):
         )
         scale = target_canvas_pixels_rounded
 
+        sign = (
+            -1
+            if self._viewer.scale_bar.position
+            in [Position.TOP_RIGHT, Position.BOTTOM_RIGHT]
+            else 1
+        )
+
         # Update scalebar and text
-        self.node.transform.scale = [scale, 1, 1, 1]
-        self.node.text.text = f'{new_dim:~}'
-        self.x_size = scale  # needed to offset properly
-        self._on_position_change()
+        self.node.transform.scale = [sign * scale, 1, 1, 1]
+        self.text_node.text = f'{new_dim:~}'
 
     def _on_data_change(self):
-        """Change color and data of scale bar and box."""
-        color = self.overlay.color
-        box_color = self.overlay.box_color
+        """Change color and data of scale bar."""
+        if self._viewer.scale_bar.colored:
+            color = self._default_color
+        else:
+            # the reason for using the `as_hex` here is to avoid
+            # `UserWarning` which is emitted when RGB values are above 1
+            background_color = get_theme(
+                self._viewer.theme, False
+            ).canvas.as_hex()
+            background_color = transform_color(background_color)[0]
+            color = np.subtract(1, background_color)
+            color[-1] = background_color[-1]
 
-        if not self.overlay.colored:
-            if self.overlay.box:
-                # The box is visible - set the scale bar color to the negative of the
-                # box color.
-                color = 1 - box_color
-                color[-1] = 1
-            else:
-                # set scale color negative of theme background.
-                # the reason for using the `as_hex` here is to avoid
-                # `UserWarning` which is emitted when RGB values are above 1
-                if self.node.parent is not None and self.node.parent.bgcolor:
-                    background_color = self.node.parent.bgcolor.rgba
-                else:
-                    background_color = get_theme(
-                        self.viewer.theme
-                    ).canvas.as_hex()
-                    background_color = transform_color(background_color)[0]
-                color = np.subtract(1, background_color)
-                color[-1] = background_color[-1]
+        if self._viewer.scale_bar.ticks:
+            data = self._data
+        else:
+            data = self._data[:2]
 
-        self.node.set_data(color, self.overlay.ticks)
-        self.node.box.color = box_color
+        self.node.set_data(data, color)
+        self.text_node.color = color
 
-    def _on_box_change(self):
-        self.node.box.visible = self.overlay.box
+    def _on_visible_change(self):
+        """Change visibility of scale bar."""
+        self.node.visible = self._viewer.scale_bar.visible
+        self.text_node.visible = self._viewer.scale_bar.visible
+
+        # update unit if scale bar is visible and quantity
+        # has not been specified yet or current unit is not
+        # equivalent
+        if self._viewer.scale_bar.visible and (
+            self._quantity is None
+            or self._quantity.units != self._viewer.scale_bar.unit
+        ):
+            self._quantity = self.unit_registry(self._viewer.scale_bar.unit)
+        # only force zoom update if the scale bar is visible
+        self._on_zoom_change(force=self._viewer.scale_bar.visible)
 
     def _on_text_change(self):
         """Update text information"""
-        self.node.text.font_size = self.overlay.font_size
+        self.text_node.font_size = self._viewer.scale_bar.font_size
 
-    def reset(self):
-        super().reset()
-        self._on_unit_change()
-        self._on_data_change()
-        self._on_box_change()
-        self._on_text_change()
+    def _on_position_change(self, _event=None):
+        """Change position of scale bar."""
+        position = self._viewer.scale_bar.position
+        x_bar_offset, y_bar_offset = 10, 30
+        canvas_size = list(self.node.canvas.size)
+
+        if position == Position.TOP_LEFT:
+            sign = 1
+            bar_transform = [x_bar_offset, 10, 0, 0]
+        elif position == Position.TOP_RIGHT:
+            sign = -1
+            bar_transform = [canvas_size[0] - x_bar_offset, 10, 0, 0]
+        elif position == Position.BOTTOM_RIGHT:
+            sign = -1
+            bar_transform = [
+                canvas_size[0] - x_bar_offset,
+                canvas_size[1] - y_bar_offset,
+                0,
+                0,
+            ]
+        elif position == Position.BOTTOM_LEFT:
+            sign = 1
+            bar_transform = [x_bar_offset, canvas_size[1] - 30, 0, 0]
+        else:
+            raise ValueError(
+                trans._(
+                    'Position {position} not recognized.',
+                    deferred=True,
+                    position=self._viewer.scale_bar.position,
+                )
+            )
+
+        self.node.transform.translate = bar_transform
+        scale = abs(self.node.transform.scale[0])
+        self.node.transform.scale = [sign * scale, 1, 1, 1]
+        self.text_node.transform.translate = (0, 20, 0, 0)

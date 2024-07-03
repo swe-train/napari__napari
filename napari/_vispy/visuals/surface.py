@@ -1,7 +1,7 @@
 from vispy.scene.visuals import Mesh, MeshNormals
 from vispy.visuals.filters import WireframeFilter
 
-from napari._vispy.visuals.clipping_planes_mixin import ClippingPlanesMixin
+from .clipping_planes_mixin import ClippingPlanesMixin
 
 
 class SurfaceVisual(ClippingPlanesMixin, Mesh):
@@ -12,7 +12,7 @@ class SurfaceVisual(ClippingPlanesMixin, Mesh):
         - normals visualisation
     """
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args, **kwargs):
         self.wireframe_filter = WireframeFilter()
         self.face_normals = None
         self.vertex_normals = None

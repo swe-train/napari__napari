@@ -1,8 +1,6 @@
 from collections.abc import Iterable
-from typing import Optional
 
 import numpy as np
-import numpy.typing as npt
 
 
 def format_float(value):
@@ -39,29 +37,10 @@ def status_format(value):
         return ''
     if isinstance(value, float) or np.issubdtype(type(value), np.floating):
         return format_float(value)
-
-    return str(value)
-
-
-def generate_layer_coords_status(
-    position: Optional[npt.ArrayLike], value: Optional[tuple]
-) -> str:
-    if position is not None:
-        full_coord = map(str, np.round(np.array(position)).astype(int))
-        msg = f" [{' '.join(full_coord)}]"
+    elif isinstance(value, int) or np.issubdtype(type(value), np.integer):
+        return str(value)
     else:
-        msg = ""
-
-    if value is not None:
-        if isinstance(value, tuple) and value != (None, None):
-            # it's a multiscale -> value = (data_level, value)
-            msg += f': {status_format(value[0])}'
-            if value[1] is not None:
-                msg += f', {status_format(value[1])}'
-        else:
-            # it's either a grayscale or rgb image (scalar or list)
-            msg += f': {status_format(value)}'
-    return msg
+        return str(value)
 
 
 def generate_layer_status(name, position, value):
@@ -81,11 +60,9 @@ def generate_layer_status(name, position, value):
     msg : string
         String containing a message that can be used as a status update.
     """
-    if position is not None:
-        full_coord = map(str, np.round(position).astype(int))
-        msg = f"{name} [{' '.join(full_coord)}]"
-    else:
-        msg = f"{name}"
+    full_coord = np.round(position).astype(int)
+
+    msg = f'{name} {full_coord}'
 
     if value is not None:
         if isinstance(value, tuple) and value != (None, None):

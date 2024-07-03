@@ -1,5 +1,5 @@
 ---
-title: "[Automatic issue] Missing `_.trans()`."
+title: [Automatic issue] Missing `_.trans()`.
 labels: "good first issue"
 ---
 
@@ -11,3 +11,4 @@ You can also Update the cron script to update this issue with better information
 
 Note that this issue will be automatically updated if kept open, or a new one will be created when necessary, if no open
 issue is found and new `_.trans` call are missing.
+

@@ -5,30 +5,21 @@
 This example demonstrates that the volume rendering capabilities of napari
 can also be used to render 2d timelapse acquisitions as kymographs.
 
-.. tags:: experimental
 """
-from itertools import product
-
+from typing import Dict, List, Tuple
 import numpy as np
+import napari
+from tqdm import tqdm
+from itertools import product
 
 try:
     from omero.gateway import BlitzGateway
-except ModuleNotFoundError:
+except:
     print("Could not import BlitzGateway which is")
     print("required to download the sample datasets.")
     print("Please install omero-py:")
     print("https://pypi.org/project/omero-py/")
     exit(-1)
-try:
-    from tqdm import tqdm
-except ModuleNotFoundError:
-    print("Could not import tqdm which is")
-    print("required to show progress when downloading the sample datasets.")
-    print("Please install tqdm:")
-    print("https://pypi.org/project/tqdm/")
-    exit(-1)
-
-import napari
 
 
 def IDR_fetch_image(image_id: int, progressbar: bool = True) -> np.ndarray:

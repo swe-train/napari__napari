@@ -1,9 +1,8 @@
-import contextlib
 import warnings
 from functools import reduce
 from itertools import count
 from operator import ior
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional
 from weakref import ReferenceType, ref
 
 from qtpy.QtCore import Qt
@@ -18,13 +17,11 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from napari._qt.utils import combine_widgets, qt_signals_blocked
-from napari.utils.translations import trans
+from ...utils.translations import trans
+from ..utils import combine_widgets, qt_signals_blocked
 
 if TYPE_CHECKING:
-    from magicgui.widgets import Widget
-
-    from napari._qt.qt_viewer import QtViewer
+    from ..qt_viewer import QtViewer
 
 counter = count()
 _sentinel = object()
@@ -42,7 +39,7 @@ class QtViewerDockWidget(QDockWidget):
     ----------
     qt_viewer : QtViewer
         The QtViewer instance that this dock widget will belong to.
-    widget : QWidget or magicgui.widgets.Widget
+    widget : QWidget
         `widget` that will be added as QDockWidget's main widget.
     name : str
         Name of dock widget.
@@ -69,7 +66,7 @@ class QtViewerDockWidget(QDockWidget):
     def __init__(
         self,
         qt_viewer,
-        widget: Union[QWidget, 'Widget'],
+        widget: QWidget,
         *,
         name: str = '',
         area: str = 'right',
@@ -78,18 +75,18 @@ class QtViewerDockWidget(QDockWidget):
         object_name: str = '',
         add_vertical_stretch=True,
         close_btn=True,
-    ) -> None:
-        self._ref_qt_viewer: ReferenceType[QtViewer] = ref(qt_viewer)
+    ):
+        self._ref_qt_viewer: 'ReferenceType[QtViewer]' = ref(qt_viewer)
         super().__init__(name)
         self._parent = qt_viewer
         self.name = name
         self._close_btn = close_btn
 
         areas = {
-            'left': Qt.DockWidgetArea.LeftDockWidgetArea,
-            'right': Qt.DockWidgetArea.RightDockWidgetArea,
-            'top': Qt.DockWidgetArea.TopDockWidgetArea,
-            'bottom': Qt.DockWidgetArea.BottomDockWidgetArea,
+            'left': Qt.LeftDockWidgetArea,
+            'right': Qt.RightDockWidgetArea,
+            'top': Qt.TopDockWidgetArea,
+            'bottom': Qt.BottomDockWidgetArea,
         }
         if area not in areas:
             raise ValueError(
@@ -130,7 +127,7 @@ class QtViewerDockWidget(QDockWidget):
                 )
             allowed_areas = reduce(ior, [areas[a] for a in allowed_areas])
         else:
-            allowed_areas = Qt.DockWidgetArea.AllDockWidgetAreas
+            allowed_areas = Qt.AllDockWidgetAreas
         self.setAllowedAreas(allowed_areas)
         self.setMinimumHeight(50)
         self.setMinimumWidth(50)
@@ -169,11 +166,7 @@ class QtViewerDockWidget(QDockWidget):
 
     def destroyOnClose(self):
         """Destroys dock plugin dock widget when 'x' is clicked."""
-        from napari.viewer import Viewer
-
-        viewer = self._ref_qt_viewer().viewer
-        if isinstance(viewer, Viewer):
-            viewer.window.remove_dock_widget(self)
+        self._ref_qt_viewer().viewer.window.remove_dock_widget(self)
 
     def _maybe_add_vertical_stretch(self, widget):
         """Add vertical stretch to the bottom of a vertical layout only
@@ -229,28 +222,13 @@ class QtViewerDockWidget(QDockWidget):
         # your method to pass uncaught key-combinations to the viewer.
         return self._ref_qt_viewer().keyPressEvent(event)
 
-    def keyReleaseEvent(self, event):
-        # if you subclass QtViewerDockWidget and override the keyReleaseEvent
-        # method, be sure to call super().keyReleaseEvent(event) at the end of
-        # your method to pass uncaught key-combinations to the viewer.
-        return self._ref_qt_viewer().keyReleaseEvent(event)
-
     def _set_title_orientation(self, area):
-        if area in (
-            Qt.DockWidgetArea.LeftDockWidgetArea,
-            Qt.DockWidgetArea.RightDockWidgetArea,
-        ):
+        if area in (Qt.LeftDockWidgetArea, Qt.RightDockWidgetArea):
             features = self._features
-            if features & self.DockWidgetFeature.DockWidgetVerticalTitleBar:
-                features = (
-                    features
-                    ^ self.DockWidgetFeature.DockWidgetVerticalTitleBar
-                )
+            if features & self.DockWidgetVerticalTitleBar:
+                features = features ^ self.DockWidgetVerticalTitleBar
         else:
-            features = (
-                self._features
-                | self.DockWidgetFeature.DockWidgetVerticalTitleBar
-            )
+            features = self._features | self.DockWidgetVerticalTitleBar
         self.setFeatures(features)
 
     @property
@@ -259,28 +237,29 @@ class QtViewerDockWidget(QDockWidget):
             par = self.parent()
             if par and hasattr(par, 'dockWidgetArea'):
                 return par.dockWidgetArea(self) in (
-                    Qt.DockWidgetArea.LeftDockWidgetArea,
-                    Qt.DockWidgetArea.RightDockWidgetArea,
+                    Qt.LeftDockWidgetArea,
+                    Qt.RightDockWidgetArea,
                 )
         return self.size().height() > self.size().width()
 
     def _on_visibility_changed(self, visible):
-        from napari.viewer import Viewer
+        try:
+            actions = [
+                action.text()
+                for action in self._ref_qt_viewer().viewer.window.plugins_menu.actions()
+            ]
+            idx = actions.index(self.name)
 
-        with contextlib.suppress(AttributeError, ValueError):
-            viewer = self._ref_qt_viewer().viewer
-            if isinstance(viewer, Viewer):
-                actions = [
-                    action.text()
-                    for action in viewer.window.plugins_menu.actions()
-                ]
-                idx = actions.index(self.name)
+            current_action = (
+                self._ref_qt_viewer().viewer.window.plugins_menu.actions()[idx]
+            )
+            current_action.setChecked(visible)
+            self.setVisible(visible)
 
-                viewer.window.plugins_menu.actions()[idx].setChecked(visible)
-
+        except (AttributeError, ValueError):
             # AttributeError: This error happens when the plugins menu is not yet built.
             # ValueError: This error is when the action is from the windows menu.
-
+            pass
         if not visible:
             return
         with qt_signals_blocked(self):
@@ -296,7 +275,6 @@ class QtViewerDockWidget(QDockWidget):
 
     def setWidget(self, widget):
         widget._parent = self
-        self.setFocusProxy(widget)
         super().setWidget(widget)
 
 
@@ -318,7 +296,7 @@ class QtCustomTitleBar(QLabel):
 
     def __init__(
         self, parent, title: str = '', vertical=False, close_btn=True
-    ) -> None:
+    ):
         super().__init__(parent)
         self.setObjectName("QtCustomTitleBar")
         self.setProperty('vertical', str(vertical))
@@ -331,17 +309,17 @@ class QtCustomTitleBar(QLabel):
         self.hide_button = QPushButton(self)
         self.hide_button.setToolTip(trans._('hide this panel'))
         self.hide_button.setObjectName("QTitleBarHideButton")
-        self.hide_button.setCursor(Qt.CursorShape.ArrowCursor)
+        self.hide_button.setCursor(Qt.ArrowCursor)
         self.hide_button.clicked.connect(lambda: self.parent().close())
 
         self.float_button = QPushButton(self)
         self.float_button.setToolTip(trans._('float this panel'))
         self.float_button.setObjectName("QTitleBarFloatButton")
-        self.float_button.setCursor(Qt.CursorShape.ArrowCursor)
+        self.float_button.setCursor(Qt.ArrowCursor)
         self.float_button.clicked.connect(
             lambda: self.parent().setFloating(not self.parent().isFloating())
         )
-        self.title: QLabel = QLabel(title, self)
+        self.title = QLabel(title, self)
         self.title.setSizePolicy(
             QSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
         )
@@ -350,7 +328,7 @@ class QtCustomTitleBar(QLabel):
             self.close_button = QPushButton(self)
             self.close_button.setToolTip(trans._('close this panel'))
             self.close_button.setObjectName("QTitleBarCloseButton")
-            self.close_button.setCursor(Qt.CursorShape.ArrowCursor)
+            self.close_button.setCursor(Qt.ArrowCursor)
             self.close_button.clicked.connect(
                 lambda: self.parent().destroyOnClose()
             )
@@ -361,16 +339,10 @@ class QtCustomTitleBar(QLabel):
             layout.setContentsMargins(0, 8, 0, 8)
             line.setFixedWidth(1)
             if close_btn:
-                layout.addWidget(
-                    self.close_button, 0, Qt.AlignmentFlag.AlignHCenter
-                )
-            layout.addWidget(
-                self.hide_button, 0, Qt.AlignmentFlag.AlignHCenter
-            )
-            layout.addWidget(
-                self.float_button, 0, Qt.AlignmentFlag.AlignHCenter
-            )
-            layout.addWidget(line, 0, Qt.AlignmentFlag.AlignHCenter)
+                layout.addWidget(self.close_button, 0, Qt.AlignHCenter)
+            layout.addWidget(self.hide_button, 0, Qt.AlignHCenter)
+            layout.addWidget(self.float_button, 0, Qt.AlignHCenter)
+            layout.addWidget(line, 0, Qt.AlignHCenter)
             self.title.hide()
 
         else:
@@ -387,7 +359,7 @@ class QtCustomTitleBar(QLabel):
             layout.addWidget(self.title)
 
         self.setLayout(layout)
-        self.setCursor(Qt.CursorShape.OpenHandCursor)
+        self.setCursor(Qt.OpenHandCursor)
 
     def sizeHint(self):
         # this seems to be the correct way to set the height of the titlebar

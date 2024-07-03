@@ -22,29 +22,13 @@ MUST make sure that all the appropriate events are emitted.  (Tests should
 cover this in test_evented_list.py)
 """
 
-import contextlib
 import logging
-from typing import (
-    Callable,
-    Dict,
-    Iterable,
-    List,
-    Optional,
-    Sequence,
-    Tuple,
-    Type,
-    Union,
-)
+from typing import Callable, Dict, Iterable, List, Sequence, Tuple, Type, Union
 
-from napari.utils.events.containers._typed import (
-    _L,
-    _T,
-    Index,
-    TypedMutableSequence,
-)
-from napari.utils.events.event import EmitterGroup, Event
-from napari.utils.events.types import SupportsEvents
-from napari.utils.translations import trans
+from ...translations import trans
+from ..event import EmitterGroup, Event
+from ..types import SupportsEvents
+from ._typed import _L, _T, Index, TypedMutableSequence
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +65,9 @@ class EventedList(TypedMutableSequence[_T]):
     moved (index: int, new_index: int, value: T)
         emitted after ``value`` is moved from ``index`` to ``new_index``
     changed (index: int, old_value: T, value: T)
-        emitted when item at ``index`` is changed from ``old_value`` to ``value``
+        emitted when ``index`` is set from ``old_value`` to ``value``
     changed <OVERLOAD> (index: slice, old_value: List[_T], value: List[_T])
-        emitted when item at ``index`` is changed from ``old_value`` to ``value``
+        emitted when ``index`` is set from ``old_value`` to ``value``
     reordered (value: self)
         emitted when the list is reordered (eg. moved/reversed).
     """
@@ -95,10 +79,8 @@ class EventedList(TypedMutableSequence[_T]):
         data: Iterable[_T] = (),
         *,
         basetype: Union[Type[_T], Sequence[Type[_T]]] = (),
-        lookup: Optional[Dict[Type[_L], Callable[[_T], Union[_T, _L]]]] = None,
-    ) -> None:
-        if lookup is None:
-            lookup = {}
+        lookup: Dict[Type[_L], Callable[[_T], Union[_T, _L]]] = dict(),
+    ):
         _events = {
             'inserting': None,  # int
             'inserted': None,  # Tuple[int, Any] - (idx, value)
@@ -115,9 +97,7 @@ class EventedList(TypedMutableSequence[_T]):
             self.events.add(**_events)
         else:
             # otherwise create a new one
-            self.events = EmitterGroup(
-                source=self, auto_connect=False, **_events
-            )
+            self.events = EmitterGroup(source=self, **_events)
         super().__init__(data, basetype=basetype, lookup=lookup)
 
     # WAIT!! ... Read the module docstring before reimplement these methods
@@ -128,7 +108,9 @@ class EventedList(TypedMutableSequence[_T]):
     # def remove(self, value: T): ...
 
     def __setitem__(self, key, value):
-        old = self._list[key]  # https://github.com/napari/napari/pull/2120
+        old = self._list[key]
+        if value is old:  # https://github.com/napari/napari/pull/2120
+            return
         if isinstance(key, slice):
             if not isinstance(value, Iterable):
                 raise TypeError(
@@ -137,11 +119,7 @@ class EventedList(TypedMutableSequence[_T]):
                         deferred=True,
                     )
                 )
-            value = list(
-                value
-            )  # make sure we don't empty generators and reuse them
-            if value == old:
-                return
+
             [self._type_check(v) for v in value]  # before we mutate the list
             if key.step is not None:  # extended slices are more restricted
                 indices = list(range(*key.indices(len(self))))
@@ -162,8 +140,6 @@ class EventedList(TypedMutableSequence[_T]):
                 for i, v in enumerate(value):
                     self.insert(start + i, v)
         else:
-            if value is old:
-                return
             super().__setitem__(key, value)
             self.events.changed(index=key, old_value=old, value=value)
 
@@ -173,9 +149,9 @@ class EventedList(TypedMutableSequence[_T]):
         # returning List[(self, int)] allows subclasses to pass nested members
         if isinstance(key, int):
             return [(self, key if key >= 0 else key + len(self))]
-        if isinstance(key, slice):
+        elif isinstance(key, slice):
             return [(self, i) for i in range(*key.indices(len(self)))]
-        if type(key) in self._lookup:
+        elif type(key) in self._lookup:
             return [(self, self.index(key))]
 
         valid = {int, slice}.union(set(self._lookup))
@@ -197,7 +173,7 @@ class EventedList(TypedMutableSequence[_T]):
             self._process_delete_item(item)
             parent.events.removed(index=index, value=item)
 
-    def _process_delete_item(self, item: _T):
+    def _process_delete_item(self, item):
         """Allow process item in inherited class before event was emitted"""
 
     def insert(self, index: int, value: _T):
@@ -210,11 +186,13 @@ class EventedList(TypedMutableSequence[_T]):
     def _reemit_child_event(self, event: Event):
         """An item in the list emitted an event.  Re-emit with index"""
         if not hasattr(event, 'index'):
-            with contextlib.suppress(ValueError):
-                event.index = self.index(event.source)
-
-        # reemit with this object's EventEmitter
-        self.events(event)
+            try:
+                setattr(event, 'index', self.index(event.source))
+            except ValueError:
+                pass
+        # reemit with this object's EventEmitter of the same type if present
+        # otherwise just emit with the EmitterGroup itself
+        getattr(self.events, event.type, self.events)(event)
 
     def _disconnect_child_emitters(self, child: _T):
         """Disconnect all events from the child from the reemitter."""
@@ -281,8 +259,7 @@ class EventedList(TypedMutableSequence[_T]):
             are not ``int`` or ``slice``.
         """
         logger.debug(
-            "move_multiple(sources={sources}, dest_index={dest_index})",
-            extra={"sources": sources, "dest_index": dest_index},
+            f"move_multiple(sources={sources}, dest_index={dest_index})"
         )
 
         # calling list here makes sure that there are no index errors up front
@@ -340,9 +317,8 @@ class EventedList(TypedMutableSequence[_T]):
             else:
                 raise TypeError(
                     trans._(
-                        "Can only move integer or slice indices, not {t}",
+                        "Can only move integer or slice indices",
                         deferred=True,
-                        t=type(idx),
                     )
                 )
 

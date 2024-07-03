@@ -17,16 +17,17 @@ representations, warn the users of their misbehaving and return a default
 white color array, since it seems unreasonable to crash the entire napari
 session due to mis-represented colors.
 """
+
 import functools
 import types
 import warnings
-from typing import Any, Callable, Dict, Optional, Sequence, Union
+from typing import Any, Callable, Dict, Sequence
 
 import numpy as np
 from vispy.color import ColorArray, get_color_dict, get_color_names
 from vispy.color.color_array import _string_to_rgb
 
-from napari.utils.translations import trans
+from ..translations import trans
 
 
 def transform_color(colors: Any) -> np.ndarray:
@@ -61,10 +62,7 @@ def transform_color(colors: Any) -> np.ndarray:
         invalid inputs
     """
     colortype = type(colors)
-    for typ, handler in _color_switch.items():
-        if issubclass(colortype, typ):
-            return handler(colors)
-    raise ValueError(f"cannot convert type '{colortype}' to a color array.")
+    return _color_switch[colortype](colors)
 
 
 @functools.lru_cache(maxsize=1024)
@@ -94,13 +92,17 @@ def _handle_str(color: str) -> np.ndarray:
         )
         return np.zeros((1, 4), dtype=np.float32)
 
+    # This line will stay here until vispy adds a "transparent" key
+    # to their color dictionary. A PR was sent and approved, currently
+    # waiting to be merged.
+    color = color.replace("transparent", "#00000000")
     colorarray = np.atleast_2d(_string_to_rgb(color)).astype(np.float32)
     if colorarray.shape[1] == 3:
         colorarray = np.column_stack([colorarray, np.float32(1.0)])
     return colorarray
 
 
-def _handle_list_like(colors: Sequence) -> Optional[np.ndarray]:
+def _handle_list_like(colors: Sequence) -> np.ndarray:
     """Parse a list-like container of colors into a numpy Nx4 array.
 
     Handles all list-like containers of colors using recursion (if necessary).
@@ -148,10 +150,9 @@ def _handle_list_like(colors: Sequence) -> Optional[np.ndarray]:
     # User input was an iterable with strings
     if color_array.dtype.kind in ['U', 'O']:
         return _handle_str_list_like(color_array.ravel())
-    return None
 
 
-def _handle_generator(colors) -> Optional[np.ndarray]:
+def _handle_generator(colors) -> np.ndarray:
     """Generators are converted to lists since we need to know their
     length to instantiate a proper array.
     """
@@ -181,17 +182,17 @@ def _handle_array(colors: np.ndarray) -> np.ndarray:
         return np.ones((max(len(colors), 1), 4), dtype=np.float32)
 
     # An array of strings will be treated as a list if compatible
-    if kind == 'U':
+    elif kind == 'U':
         if colors.ndim == 1:
             return _handle_str_list_like(colors)
-
-        warnings.warn(
-            trans._(
-                "String color arrays should be one-dimensional. Converting input to a white color array.",
-                deferred=True,
+        else:
+            warnings.warn(
+                trans._(
+                    "String color arrays should be one-dimensional. Converting input to a white color array.",
+                    deferred=True,
+                )
             )
-        )
-        return np.ones((len(colors), 4), dtype=np.float32)
+            return np.ones((len(colors), 4), dtype=np.float32)
 
     # Test the dimensionality of the input array
 
@@ -253,13 +254,14 @@ def _handle_array(colors: np.ndarray) -> np.ndarray:
     if kind in ['f', 'i', 'u']:
         return _convert_array_to_correct_format(colors)
 
-    raise ValueError(
-        trans._(
-            "Data type of array ({color_dtype}) not supported.",
-            deferred=True,
-            color_dtype=colors.dtype,
+    else:
+        raise ValueError(
+            trans._(
+                "Data type of array ({color_dtype}) not supported.",
+                deferred=True,
+                color_dtype=colors.dtype,
+            )
         )
-    )
 
 
 def _convert_array_to_correct_format(colors: np.ndarray) -> np.ndarray:
@@ -305,7 +307,7 @@ def _convert_array_to_correct_format(colors: np.ndarray) -> np.ndarray:
     return np.atleast_2d(np.asarray(colors, dtype=np.float32))
 
 
-def _handle_str_list_like(colors: Union[Sequence, np.ndarray]) -> np.ndarray:
+def _handle_str_list_like(colors: Sequence) -> np.ndarray:
     """Converts lists or arrays filled with strings to the proper color array
     format.
 
@@ -323,7 +325,7 @@ def _handle_str_list_like(colors: Union[Sequence, np.ndarray]) -> np.ndarray:
     for idx, c in enumerate(colors):
         try:
             color_array[idx, :] = _color_switch[type(c)](c)
-        except (ValueError, TypeError, KeyError) as e:
+        except (ValueError, TypeError, KeyError):
             raise ValueError(
                 trans._(
                     "Invalid color found: {color} at index {idx}.",
@@ -331,7 +333,7 @@ def _handle_str_list_like(colors: Union[Sequence, np.ndarray]) -> np.ndarray:
                     color=c,
                     idx=idx,
                 )
-            ) from e
+            )
     return color_array
 
 
@@ -400,18 +402,25 @@ def _create_hex_to_name_dict():
     """
     colordict = get_color_dict()
     hex_to_name = {f"{v.lower()}ff": k for k, v in colordict.items()}
+    hex_to_name["#00000000"] = "transparent"
     return hex_to_name
 
 
 def get_color_namelist():
-    """Gets all the color names supported by napari.
+    """A wrapper around vispy's get_color_names designed to add a
+    "transparent" (alpha = 0) color to it.
+
+    Once https://github.com/vispy/vispy/pull/1794 is merged this
+    function is no longer necessary.
 
     Returns
     -------
-    list[str]
-        All the color names supported by napari.
+    color_dict : list
+        A list of all valid vispy color names plus "transparent".
     """
-    return get_color_names()
+    names = get_color_names()
+    names.append('transparent')
+    return names
 
 
 hex_to_name = _create_hex_to_name_dict()

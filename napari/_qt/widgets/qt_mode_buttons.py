@@ -30,7 +30,7 @@ class QtModeRadioButton(QRadioButton):
 
     def __init__(
         self, layer, button_name, mode, *, tooltip=None, checked=False
-    ) -> None:
+    ):
         super().__init__()
 
         self.layer_ref = weakref.ref(layer)
@@ -42,12 +42,12 @@ class QtModeRadioButton(QRadioButton):
         if mode is not None:
             self.toggled.connect(self._set_mode)
 
-    def _set_mode(self, mode_selected):
+    def _set_mode(self, bool):
         """Toggle the mode associated with the layer.
 
         Parameters
         ----------
-        mode_selected : bool
+        bool : bool
             Whether this mode is currently selected or not.
         """
         layer = self.layer_ref()
@@ -55,7 +55,7 @@ class QtModeRadioButton(QRadioButton):
             return
 
         with layer.events.mode.blocker(self._set_mode):
-            if mode_selected:
+            if bool:
                 layer.mode = self.mode
 
 
@@ -80,7 +80,7 @@ class QtModePushButton(QPushButton):
         The layer instance that this button controls.
     """
 
-    def __init__(self, layer, button_name, *, slot=None, tooltip=None) -> None:
+    def __init__(self, layer, button_name, *, slot=None, tooltip=None):
         super().__init__()
 
         self.layer = layer

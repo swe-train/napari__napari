@@ -2,17 +2,15 @@
 Add points with features
 ========================
 
-Display a points layer on top of an image layer using the ``add_points`` and
-``add_image`` APIs
-
-.. tags:: visualization-basic
+Display a points layer on top of an image layer using the add_points and
+add_image APIs
 """
 
 import numpy as np
 from skimage import data
 from skimage.color import rgb2gray
-
 import napari
+
 
 # add the image
 viewer = napari.view_image(rgb2gray(data.astronaut()))

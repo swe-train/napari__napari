@@ -1,29 +1,19 @@
 from collections.abc import Iterable
-from typing import TYPE_CHECKING
 
 import numpy as np
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QButtonGroup, QCheckBox, QGridLayout
 
-from napari._qt.layer_controls.qt_layer_controls_base import QtLayerControls
-from napari._qt.utils import (
-    qt_signals_blocked,
-    set_widgets_enabled_with_opacity,
-)
-from napari._qt.widgets._slider_compat import QSlider
-from napari._qt.widgets.qt_color_swatch import QColorSwatchEdit
-from napari._qt.widgets.qt_mode_buttons import (
-    QtModePushButton,
-    QtModeRadioButton,
-)
-from napari.layers.shapes._shapes_constants import Mode
-from napari.utils.action_manager import action_manager
-from napari.utils.events import disconnect_events
-from napari.utils.interactions import Shortcut
-from napari.utils.translations import trans
-
-if TYPE_CHECKING:
-    import napari.layers
+from ...layers.shapes._shapes_constants import Mode
+from ...utils.action_manager import action_manager
+from ...utils.events import disconnect_events
+from ...utils.interactions import Shortcut
+from ...utils.translations import trans
+from ..utils import disable_with_opacity, qt_signals_blocked
+from ..widgets._slider_compat import QSlider
+from ..widgets.qt_color_swatch import QColorSwatchEdit
+from ..widgets.qt_mode_buttons import QtModePushButton, QtModeRadioButton
+from .qt_layer_controls_base import QtLayerControls
 
 
 class QtShapesControls(QtLayerControls):
@@ -44,12 +34,18 @@ class QtShapesControls(QtLayerControls):
         Button to delete selected shapes
     direct_button : qtpy.QtWidgets.QtModeRadioButton
         Button to select individual vertices in shapes.
-    edgeColorEdit : QColorSwatchEdit
-        Widget allowing user to set edge color of points.
+    edgeColorSwatch : qtpy.QtWidgets.QFrame
+        Thumbnail display of points edge color.
+    edgeComboBox : qtpy.QtWidgets.QComboBox
+        Drop down list allowing user to set edge color of points.
     ellipse_button : qtpy.QtWidgets.QtModeRadioButton
         Button to add ellipses to shapes layer.
-    faceColorEdit : QColorSwatchEdit
-        Widget allowing user to set face color of points.
+    faceColorSwatch : qtpy.QtWidgets.QFrame
+        Thumbnail display of points face color.
+    faceComboBox : qtpy.QtWidgets.QComboBox
+        Drop down list allowing user to set face color of points.
+    grid_layout : qtpy.QtWidgets.QGridLayout
+        Layout of Qt widget controls for the layer.
     layer : napari.layers.Shapes
         An instance of a napari Shapes layer.
     line_button : qtpy.QtWidgets.QtModeRadioButton
@@ -64,14 +60,10 @@ class QtShapesControls(QtLayerControls):
         Button to add paths to shapes layer.
     polygon_button : qtpy.QtWidgets.QtModeRadioButton
         Button to add polygons to shapes layer.
-    polygon_lasso_button : qtpy.QtWidgets.QtModeRadioButton
-        Button to add polygons to shapes layer with a lasso tool.
     rectangle_button : qtpy.QtWidgets.QtModeRadioButton
         Button to add rectangles to shapes layer.
     select_button : qtpy.QtWidgets.QtModeRadioButton
         Button to select shapes.
-    textDispCheckBox : qtpy.QtWidgets.QCheckBox
-        Checkbox to control if text should be displayed
     vertex_insert_button : qtpy.QtWidgets.QtModeRadioButton
         Button to insert vertex into shape.
     vertex_remove_button : qtpy.QtWidgets.QtModeRadioButton
@@ -85,9 +77,7 @@ class QtShapesControls(QtLayerControls):
         Raise error if shapes mode is not recognized.
     """
 
-    layer: 'napari.layers.Shapes'
-
-    def __init__(self, layer) -> None:
+    def __init__(self, layer):
         super().__init__(layer)
 
         self.layer.events.mode.connect(self._on_mode_change)
@@ -98,12 +88,11 @@ class QtShapesControls(QtLayerControls):
         self.layer.events.current_face_color.connect(
             self._on_current_face_color_change
         )
-        self.layer.events.editable.connect(self._on_editable_or_visible_change)
-        self.layer.events.visible.connect(self._on_editable_or_visible_change)
+        self.layer.events.editable.connect(self._on_editable_change)
         self.layer.text.events.visible.connect(self._on_text_visibility_change)
 
-        sld = QSlider(Qt.Orientation.Horizontal)
-        sld.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        sld = QSlider(Qt.Horizontal)
+        sld.setFocusPolicy(Qt.NoFocus)
         sld.setMinimum(0)
         sld.setMaximum(40)
         sld.setSingleStep(1)
@@ -154,7 +143,7 @@ class QtShapesControls(QtLayerControls):
             When shortcuts are modifed/added/removed via the action manager, the
             tooltip will be updated to reflect the new shortcut.
             """
-            action_name = f'napari:{action_name}'
+            action_name = 'napari:' + action_name
             btn = QtModeRadioButton(parent, btn_name, mode, **kwargs)
             action_manager.bind_button(
                 action_name,
@@ -173,9 +162,9 @@ class QtShapesControls(QtLayerControls):
 
         self.panzoom_button = _radio_button(
             layer,
-            'pan',
+            'zoom',
             Mode.PAN_ZOOM,
-            "activate_shapes_pan_zoom_mode",
+            "activate_shape_pan_zoom_mode",
             extra_tooltip_text=trans._('(or hold Space)'),
             checked=True,
         )
@@ -204,12 +193,6 @@ class QtShapesControls(QtLayerControls):
             'polygon',
             Mode.ADD_POLYGON,
             "activate_add_polygon_mode",
-        )
-        self.polygon_lasso_button = _radio_button(
-            layer,
-            'polygon_lasso',
-            Mode.ADD_POLYGON_LASSO,
-            "activate_add_polygon_lasso_mode",
         )
         self.vertex_insert_button = _radio_button(
             layer,
@@ -255,22 +238,6 @@ class QtShapesControls(QtLayerControls):
             ),
         )
 
-        self._EDIT_BUTTONS = (
-            self.select_button,
-            self.direct_button,
-            self.rectangle_button,
-            self.ellipse_button,
-            self.line_button,
-            self.path_button,
-            self.polygon_button,
-            self.polygon_lasso_button,
-            self.vertex_remove_button,
-            self.vertex_insert_button,
-            self.delete_button,
-            self.move_back_button,
-            self.move_front_button,
-        )
-
         self.button_group = QButtonGroup(self)
         self.button_group.addButton(self.select_button)
         self.button_group.addButton(self.direct_button)
@@ -280,10 +247,8 @@ class QtShapesControls(QtLayerControls):
         self.button_group.addButton(self.line_button)
         self.button_group.addButton(self.path_button)
         self.button_group.addButton(self.polygon_button)
-        self.button_group.addButton(self.polygon_lasso_button)
         self.button_group.addButton(self.vertex_insert_button)
         self.button_group.addButton(self.vertex_remove_button)
-        self._on_editable_or_visible_change()
 
         button_grid = QGridLayout()
         button_grid.addWidget(self.vertex_remove_button, 0, 2)
@@ -292,12 +257,11 @@ class QtShapesControls(QtLayerControls):
         button_grid.addWidget(self.direct_button, 0, 5)
         button_grid.addWidget(self.select_button, 0, 6)
         button_grid.addWidget(self.panzoom_button, 0, 7)
-        button_grid.addWidget(self.move_back_button, 1, 0)
-        button_grid.addWidget(self.move_front_button, 1, 1)
-        button_grid.addWidget(self.ellipse_button, 1, 2)
-        button_grid.addWidget(self.rectangle_button, 1, 3)
-        button_grid.addWidget(self.polygon_button, 1, 4)
-        button_grid.addWidget(self.polygon_lasso_button, 1, 5)
+        button_grid.addWidget(self.move_back_button, 1, 1)
+        button_grid.addWidget(self.move_front_button, 1, 2)
+        button_grid.addWidget(self.ellipse_button, 1, 3)
+        button_grid.addWidget(self.rectangle_button, 1, 4)
+        button_grid.addWidget(self.polygon_button, 1, 5)
         button_grid.addWidget(self.line_button, 1, 6)
         button_grid.addWidget(self.path_button, 1, 7)
         button_grid.setContentsMargins(5, 0, 0, 5)
@@ -324,7 +288,7 @@ class QtShapesControls(QtLayerControls):
         self.textDispCheckBox = text_disp_cb
 
         self.layout().addRow(button_grid)
-        self.layout().addRow(self.opacityLabel, self.opacitySlider)
+        self.layout().addRow(trans._('opacity:'), self.opacitySlider)
         self.layout().addRow(trans._('edge width:'), self.widthSlider)
         self.layout().addRow(trans._('blending:'), self.blendComboBox)
         self.layout().addRow(trans._('face color:'), self.faceColorEdit)
@@ -365,14 +329,15 @@ class QtShapesControls(QtLayerControls):
             Mode.ADD_LINE: self.line_button,
             Mode.ADD_PATH: self.path_button,
             Mode.ADD_POLYGON: self.polygon_button,
-            Mode.ADD_POLYGON_LASSO: self.polygon_lasso_button,
             Mode.VERTEX_INSERT: self.vertex_insert_button,
             Mode.VERTEX_REMOVE: self.vertex_remove_button,
         }
 
         if event.mode in mode_buttons:
             mode_buttons[event.mode].setChecked(True)
-        elif event.mode != Mode.TRANSFORM:
+        elif event.mode == Mode.TRANSFORM:
+            pass
+        else:
             raise ValueError(
                 trans._("Mode '{mode}'not recognized", mode=event.mode)
             )
@@ -416,10 +381,13 @@ class QtShapesControls(QtLayerControls):
 
         Parameters
         ----------
-        state : int
-            Integer value of Qt.CheckState that indicates the check state of textDispCheckBox
+        state : QCheckBox
+            Checkbox indicating if text is visible.
         """
-        self.layer.text.visible = Qt.CheckState(state) == Qt.CheckState.Checked
+        if state == Qt.Checked:
+            self.layer.text.visible = True
+        else:
+            self.layer.text.visible = False
 
     def _on_text_visibility_change(self):
         """Receive layer model text visibiltiy change change event and update checkbox."""
@@ -443,15 +411,25 @@ class QtShapesControls(QtLayerControls):
         with qt_signals_blocked(self.faceColorEdit):
             self.faceColorEdit.setColor(self.layer.current_face_color)
 
-    def _on_ndisplay_changed(self):
-        self.layer.editable = self.ndisplay == 2
-
-    def _on_editable_or_visible_change(self):
-        """Receive layer model editable/visible change event & enable/disable buttons."""
-        set_widgets_enabled_with_opacity(
+    def _on_editable_change(self):
+        """Receive layer model editable change event & enable/disable buttons."""
+        disable_with_opacity(
             self,
-            self._EDIT_BUTTONS,
-            self.layer.editable and self.layer.visible,
+            [
+                'select_button',
+                'direct_button',
+                'rectangle_button',
+                'ellipse_button',
+                'line_button',
+                'path_button',
+                'polygon_button',
+                'vertex_remove_button',
+                'vertex_insert_button',
+                'delete_button',
+                'move_back_button',
+                'move_front_button',
+            ],
+            self.layer.editable,
         )
 
     def close(self):

@@ -10,6 +10,7 @@ from napari.components import ViewerModel
 from napari.utils import _dask_utils, resize_dask_cache
 
 
+@pytest.mark.sync_only
 @pytest.mark.parametrize('dtype', ['float64', 'uint8'])
 def test_dask_not_greedy(dtype):
     """Make sure that we don't immediately calculate dask arrays."""
@@ -107,6 +108,7 @@ def delayed_dask_stack():
     return output
 
 
+@pytest.mark.sync_only
 def test_dask_global_optimized_slicing(delayed_dask_stack, monkeypatch):
     """Test that dask_configure reduces compute with dask stacks."""
 
@@ -148,6 +150,7 @@ def test_dask_global_optimized_slicing(delayed_dask_stack, monkeypatch):
     assert delayed_dask_stack['calls'] == 5
 
 
+@pytest.mark.sync_only
 def test_dask_unoptimized_slicing(delayed_dask_stack, monkeypatch):
     """Prove that the dask_configure function works with a counterexample."""
     # we start with a cache...but then intentionally turn it off per-layer.
@@ -188,6 +191,7 @@ def test_dask_unoptimized_slicing(delayed_dask_stack, monkeypatch):
     assert delayed_dask_stack['calls'] >= 9
 
 
+@pytest.mark.sync_only
 def test_dask_local_unoptimized_slicing(delayed_dask_stack, monkeypatch):
     """Prove that the dask_configure function works with a counterexample."""
     # make sure we are not caching for this test, which also tests that we
@@ -228,6 +232,7 @@ def test_dask_local_unoptimized_slicing(delayed_dask_stack, monkeypatch):
     assert delayed_dask_stack['calls'] >= 10
 
 
+@pytest.mark.sync_only
 def test_dask_cache_resizing(delayed_dask_stack):
     """Test that we can spin up, resize, and spin down the cache."""
 
@@ -282,11 +287,3 @@ def test_prevent_dask_cache(delayed_dask_stack):
     for i in range(3):
         v.dims.set_point(0, i)
     assert len(_dask_utils._DASK_CACHE.cache.heap.heap) == 0
-
-
-def test_dask_contrast_limits_range_init():
-    np_arr = np.array([[0.000001, -0.0002], [0, 0.0000004]])
-    da_arr = da.array(np_arr)
-    i1 = layers.Image(np_arr)
-    i2 = layers.Image(da_arr)
-    assert i1.contrast_limits_range == i2.contrast_limits_range

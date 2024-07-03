@@ -3,11 +3,10 @@ from __future__ import annotations
 from enum import Enum
 from typing import TYPE_CHECKING, Type
 
-from app_model.types import KeyBinding
+from pydantic import BaseModel
 from yaml import SafeDumper, dump_all
 
-from napari._pydantic_compat import BaseModel
-from napari.settings._fields import Version
+from ._fields import Version
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -44,9 +43,6 @@ YamlDumper.add_representer(
 YamlDumper.add_representer(
     Version, lambda dumper, data: dumper.represent_str(str(data))
 )
-YamlDumper.add_representer(
-    KeyBinding, lambda dumper, data: dumper.represent_str(str(data))
-)
 
 
 class PydanticYamlMixin(BaseModel):
@@ -81,7 +77,7 @@ class PydanticYamlMixin(BaseModel):
             exclude_none=exclude_none,
         )
         if self.__custom_root_type__:
-            from napari._pydantic_compat import ROOT_KEY
+            from pydantic.utils import ROOT_KEY
 
             data = data[ROOT_KEY]
         return self._yaml_dump(data, dumper, **dumps_kwargs)

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from qtpy.QtCore import QPoint, QSize, Qt
 from qtpy.QtGui import QMovie
 from qtpy.QtWidgets import (
@@ -14,13 +16,11 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from napari._qt.widgets.qt_progress_bar import (
-    QtLabeledProgressBar,
-    QtProgressBarGroup,
-)
-from napari.resources import LOADING_GIF_PATH
-from napari.utils.progress import progress
-from napari.utils.translations import trans
+import napari.resources
+
+from ...utils.progress import progress
+from ...utils.translations import trans
+from ..widgets.qt_progress_bar import QtLabeledProgressBar, QtProgressBarGroup
 
 
 class ActivityToggleItem(QWidget):
@@ -36,10 +36,8 @@ class ActivityToggleItem(QWidget):
 
         self._activityBtn = QToolButton()
         self._activityBtn.setObjectName("QtActivityButton")
-        self._activityBtn.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
-        )
-        self._activityBtn.setArrowType(Qt.ArrowType.UpArrow)
+        self._activityBtn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self._activityBtn.setArrowType(Qt.UpArrow)
         self._activityBtn.setIconSize(QSize(11, 11))
         self._activityBtn.setText(trans._('activity'))
         self._activityBtn.setCheckable(True)
@@ -48,7 +46,8 @@ class ActivityToggleItem(QWidget):
         sp = self._inProgressIndicator.sizePolicy()
         sp.setRetainSizeWhenHidden(True)
         self._inProgressIndicator.setSizePolicy(sp)
-        mov = QMovie(LOADING_GIF_PATH)
+        load_gif = str(Path(napari.resources.__file__).parent / "loading.gif")
+        mov = QMovie(load_gif)
         mov.setScaledSize(QSize(18, 18))
         self._inProgressIndicator.setMovie(mov)
         self._inProgressIndicator.hide()
@@ -64,7 +63,7 @@ class QtActivityDialog(QDialog):
     MIN_WIDTH = 250
     MIN_HEIGHT = 185
 
-    def __init__(self, parent=None, toggle_button=None) -> None:
+    def __init__(self, parent=None, toggle_button=None):
         super().__init__(parent)
         self._toggleButton = toggle_button
 
@@ -73,9 +72,7 @@ class QtActivityDialog(QDialog):
         self.setMinimumHeight(self.MIN_HEIGHT)
         self.setMaximumHeight(self.MIN_HEIGHT)
         self.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Fixed)
-        self.setWindowFlags(
-            Qt.WindowType.SubWindow | Qt.WindowType.WindowStaysOnTopHint
-        )
+        self.setWindowFlags(Qt.SubWindow | Qt.WindowStaysOnTopHint)
         self.setModal(False)
 
         opacityEffect = QGraphicsOpacityEffect(self)
@@ -226,11 +223,11 @@ class QtActivityDialog(QDialog):
         QtLabeledProgressBar
             QtLabeledProgressBar widget associated with this progress object
         """
-        if pbars := self._baseWidget.findChildren(QtLabeledProgressBar):
+        pbars = self._baseWidget.findChildren(QtLabeledProgressBar)
+        if pbars:
             for potential_parent in pbars:
                 if potential_parent.progress is prog:
                     return potential_parent
-        return None
 
     def close_progress_bar(self, prog):
         """Close `QtLabeledProgressBar` and parent `QtProgressBarGroup` if needed
@@ -268,9 +265,9 @@ class QtActivityDialog(QDialog):
         pbars = self._baseWidget.findChildren(QtLabeledProgressBar)
         pbar_groups = self._baseWidget.findChildren(QtProgressBarGroup)
 
-        progress_visible = any(pbar.isVisible() for pbar in pbars)
+        progress_visible = any([pbar.isVisible() for pbar in pbars])
         progress_group_visible = any(
-            pbar_group.isVisible() for pbar_group in pbar_groups
+            [pbar_group.isVisible() for pbar_group in pbar_groups]
         )
         if not progress_visible and not progress_group_visible:
             self._toggleButton._inProgressIndicator.movie().stop()
@@ -287,7 +284,8 @@ def remove_separators(current_pbars):
         parent and new progress bar to remove separators from
     """
     for current_pbar in current_pbars:
-        if line_widg := current_pbar.findChild(QFrame, "QtCustomTitleBarLine"):
+        line_widg = current_pbar.findChild(QFrame, "QtCustomTitleBarLine")
+        if line_widg:
             current_pbar.layout().removeWidget(line_widg)
             line_widg.hide()
             line_widg.deleteLater()

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Iterable, Iterator, MutableSet, TypeVar
 
-from napari.utils.events import EmitterGroup
-from napari.utils.translations import trans
+from ....utils.events import EmitterGroup
+from ....utils.translations import trans
 
 _T = TypeVar("_T")
 
 if TYPE_CHECKING:
-    from napari._pydantic_compat import ModelField
+    from pydantic.fields import ModelField
 
 
 class EventedSet(MutableSet[_T]):
@@ -28,14 +28,15 @@ class EventedSet(MutableSet[_T]):
 
     events: EmitterGroup
 
-    def __init__(self, data: Iterable[_T] = ()) -> None:
-        changed = None
+    def __init__(self, data: Iterable[_T] = ()):
+
+        _events = {'changed': None}
         # For inheritance: If the mro already provides an EmitterGroup, add...
         if hasattr(self, 'events') and isinstance(self.events, EmitterGroup):
-            self.events.add(changed=changed)
+            self.events.add(**_events)
         else:
             # otherwise create a new one
-            self.events = EmitterGroup(source=self, changed=changed)
+            self.events = EmitterGroup(source=self, **_events)
 
         self._set: set[_T] = set()
         self.update(data)
@@ -55,12 +56,8 @@ class EventedSet(MutableSet[_T]):
         # for subclasses to potentially check value before adding
         return value
 
-    def _emit_change(self, added=None, removed=None):
+    def _emit_change(self, added=set(), removed=set()):
         # provides a hook for subclasses to update internal state before emit
-        if added is None:
-            added = set()
-        if removed is None:
-            removed = set()
         self.events.changed(added=added, removed=removed)
 
     def add(self, value: _T) -> None:
@@ -97,7 +94,7 @@ class EventedSet(MutableSet[_T]):
             self._emit_change(added={}, removed=values)
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}({self._set!r})"
+        return f"{type(self).__name__}({repr(self._set)})"
 
     def update(self, others: Iterable[_T] = ()) -> None:
         """Update this set with the union of this set and others"""
@@ -165,7 +162,7 @@ class EventedSet(MutableSet[_T]):
     @classmethod
     def validate(cls, v, field: ModelField):
         """Pydantic validator."""
-        from napari._pydantic_compat import sequence_like
+        from pydantic.utils import sequence_like
 
         if not sequence_like(v):
             raise TypeError(
@@ -185,9 +182,9 @@ class EventedSet(MutableSet[_T]):
             if error:
                 errors.append(error)
         if errors:
-            from napari._pydantic_compat import ValidationError
+            from pydantic import ValidationError
 
-            raise ValidationError(errors, cls)
+            raise ValidationError(errors, cls)  # type: ignore
         return cls(v)
 
     def _json_encode(self):

@@ -1,8 +1,8 @@
 from collections import OrderedDict
-from enum import auto
+from enum import Enum, auto
 
-from napari.utils.misc import StringEnum
-from napari.utils.translations import trans
+from ...utils.misc import StringEnum
+from ...utils.translations import trans
 
 
 class ColorMode(StringEnum):
@@ -31,29 +31,38 @@ class Mode(StringEnum):
     SELECT allows the user to select points by clicking on them
     """
 
-    PAN_ZOOM = auto()
-    TRANSFORM = auto()
     ADD = auto()
     SELECT = auto()
+    PAN_ZOOM = auto()
+    TRANSFORM = auto()
 
 
-class Symbol(StringEnum):
-    """Valid symbol/marker types for the Points layer."""
+class Symbol(Enum):
+    """Symbol: Valid symbol/marker types for the Points layer.
+    The string method returns the valid vispy string.
 
-    ARROW = auto()
-    CLOBBER = auto()
-    CROSS = auto()
-    DIAMOND = auto()
-    DISC = auto()
-    HBAR = auto()
-    RING = auto()
-    SQUARE = auto()
-    STAR = auto()
-    TAILED_ARROW = auto()
-    TRIANGLE_DOWN = auto()
-    TRIANGLE_UP = auto()
-    VBAR = auto()
-    X = auto()
+    """
+
+    ARROW = 'arrow'
+    CLOBBER = 'clobber'
+    CROSS = 'cross'
+    DIAMOND = 'diamond'
+    DISC = 'disc'
+    HBAR = 'hbar'
+    RING = 'ring'
+    SQUARE = 'square'
+    STAR = 'star'
+    TAILED_ARROW = 'tailed_arrow'
+    TRIANGLE_DOWN = 'triangle_down'
+    TRIANGLE_UP = 'triangle_up'
+    VBAR = 'vbar'
+    X = 'x'
+
+    def __str__(self):
+        """String representation: The string method returns the
+        valid vispy symbol string for the Markers visual.
+        """
+        return self.value
 
 
 # Mapping of symbol alias names to the deduplicated name
@@ -69,6 +78,7 @@ SYMBOL_ALIAS = {
     's': Symbol.SQUARE,
     '|': Symbol.VBAR,
 }
+
 
 SYMBOL_TRANSLATION = OrderedDict(
     [
@@ -89,8 +99,6 @@ SYMBOL_TRANSLATION = OrderedDict(
     ]
 )
 
-SYMBOL_TRANSLATION_INVERTED = {v: k for k, v in SYMBOL_TRANSLATION.items()}
-
 
 class Shading(StringEnum):
     """Shading: Shading mode for the points.
@@ -107,15 +115,3 @@ SHADING_TRANSLATION = {
     trans._("none"): Shading.NONE,
     trans._("spherical"): Shading.SPHERICAL,
 }
-
-
-class PointsProjectionMode(StringEnum):
-    """
-    Projection mode for aggregating a thick nD slice onto displayed dimensions.
-
-        * NONE: ignore slice thickness, only using the dims point
-        * ALL: project all points in the slice onto displayed dimensions
-    """
-
-    NONE = auto()
-    ALL = auto()

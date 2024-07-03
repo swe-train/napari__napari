@@ -1,3 +1,1 @@
-from napari.layers.tracks.tracks import Tracks
-
-__all__ = ['Tracks']
+from .tracks import Tracks

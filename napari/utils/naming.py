@@ -3,17 +3,8 @@
 import inspect
 import re
 from collections import ChainMap
-from types import FrameType, TracebackType
-from typing import (
-    Any,
-    Callable,
-    ChainMap as ChainMapType,
-    Optional,
-    Tuple,
-    Type,
-)
 
-from napari.utils.misc import ROOT_DIR, formatdoc
+from .misc import ROOT_DIR, formatdoc
 
 sep = ' '
 start = 1
@@ -23,7 +14,7 @@ start = 1
 numbered_patt = re.compile(r'((?<=\A\[)|(?<=\s\[))(?:\d+|)(?=\]$)|$')
 
 
-def _inc_name_count_sub(match: re.Match) -> str:
+def _inc_name_count_sub(match):
     count = match.group(0)
 
     try:
@@ -37,7 +28,7 @@ def _inc_name_count_sub(match: re.Match) -> str:
 
 
 @formatdoc
-def inc_name_count(name: str) -> str:
+def inc_name_count(name):
     """Increase a name's count matching `{numbered_patt}` by ``1``.
 
     If the name is not already numbered, append '{sep}[{start}]'.
@@ -91,26 +82,20 @@ class CallerFrame:
 
     """
 
-    names: Tuple[str, ...]
-    namespace: ChainMapType[str, Any]
-    predicate: Callable[[int, FrameType], bool]
-
-    def __init__(
-        self, skip_predicate: Callable[[int, FrameType], bool]
-    ) -> None:
+    def __init__(self, skip_predicate):
         self.predicate = skip_predicate
-        self.namespace = ChainMap()
+        self.namespace = {}
         self.names = ()
 
-    def __enter__(self) -> 'CallerFrame':
-        frame = inspect.currentframe()
+    def __enter__(self):
+
+        frame = inspect.currentframe().f_back
         try:
             # See issue #1635 regarding potential AttributeError
             # since frame could be None.
             # https://github.com/napari/napari/pull/1635
-            for _ in range(2):
-                if inspect.isframe(frame):
-                    frame = frame.f_back
+            if inspect.isframe(frame):
+                frame = frame.f_back
 
             # Iterate frames while filename starts with path_prefix (part of Napari)
             n = 1
@@ -142,17 +127,12 @@ class CallerFrame:
 
         return self
 
-    def __exit__(
-        self,
-        exc_type: Optional[Type[BaseException]],
-        exc_value: Optional[BaseException],
-        traceback: Optional[TracebackType],
-    ) -> None:
+    def __exit__(self, exc_type, exc_value, traceback):
         del self.namespace
         del self.names
 
 
-def magic_name(value: Any, *, path_prefix: str = ROOT_DIR) -> Optional[str]:
+def magic_name(value, *, path_prefix=ROOT_DIR):
     """Fetch the name of the variable with the given value passed to the calling function.
 
     Parameters

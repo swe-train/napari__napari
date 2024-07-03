@@ -7,17 +7,11 @@ Example showing how to accomplish a napari parameter sweep with magicgui.
 It demonstrates:
 1. overriding the default widget type with a custom class
 2. the `auto_call` option, which calls the function whenever a parameter changes
-
-.. tags:: gui
 """
-import typing
-
 import skimage.data
 import skimage.filters
-from typing_extensions import Annotated
-
 import napari
-
+from typing_extensions import Annotated
 
 # Define our gaussian_blur function.
 # Note that we can use forward references for the napari type annotations.
@@ -34,11 +28,10 @@ def gaussian_blur(
     layer: 'napari.layers.Image',
     sigma: Annotated[float, {"widget_type": "FloatSlider", "max": 6}] = 1.0,
     mode: Annotated[str, {"choices": ["reflect", "constant", "nearest", "mirror", "wrap"]}]="nearest",
-) -> 'typing.Optional[napari.types.ImageData]':
+) -> 'napari.types.ImageData':
     """Apply a gaussian blur to ``layer``."""
     if layer:
         return skimage.filters.gaussian(layer.data, sigma=sigma, mode=mode)
-    return None
 
 
 # create a viewer and add some images

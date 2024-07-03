@@ -375,55 +375,17 @@ def test_translation_string_exceptions():
 
 
 def test_bundle_exceptions(trans):
-    with pytest.raises(
-        TypeError, match="missing 1 required keyword-only argument: 'msgid'"
-    ):
+    with pytest.raises(ValueError):
         trans._dnpgettext()
 
 
-@pytest.mark.parametrize(
-    "kwargs",
-    [
-        {
-            'msgid': 'huhu',
-        },
-        {
-            'msgid': 'Convert to {dtype}',
-            'dtype': 'uint16',
-        },
-        {
-            'msgid': 'Convert to {dtype}',
-            'dtype': 'uint16',
-            'deferred': True,
-        },
-        {
-            'msgid': 'Convert to {dtype}',
-            'dtype': 'uint16',
-            'deferred': False,
-        },
-        {
-            'msgid': 'Convert to {dtype}',
-            'msgid_plural': 'Convert to {dtype}s',
-            'n': 1,
-            'dtype': 'uint16',
-        },
-        {
-            'msgid': 'Convert to {dtype}',
-            'msgid_plural': 'Convert to {dtype}s',
-            'n': 2,
-            'dtype': 'uint16',
-        },
-    ],
-)
-def test_deepcopy(kwargs):
-    """Object containing translation strings can't be deep-copied.
+def test_deepcopy():
+    """see https://github.com/napari/napari/issues/2911
 
-    See:
-      - https://github.com/napari/napari/issues/2911
-      - https://github.com/napari/napari/issues/4736
+    Object containing translation strings can't bee deep-copied.
     """
-    kwargs['domain'] = 'napari'
-    t = TranslationString(**kwargs)
+
+    t = TranslationString(msgid='huhu')
     u = deepcopy(t)
     assert t is not u
     assert t == u

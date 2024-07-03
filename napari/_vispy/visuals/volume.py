@@ -1,7 +1,5 @@
 from vispy.scene.visuals import Volume as BaseVolume
 
-from napari._vispy.visuals.util import TextureMixin
-
 FUNCTION_DEFINITIONS = """
 // the tolerance for testing equality of floats with floatEqual and floatNotEqual
 const float equality_tolerance = 1e-8;
@@ -34,10 +32,10 @@ int detectAdjacentBackground(float val_neg, float val_pos)
     return adjacent_bg;
 }
 
-vec4 calculateShadedCategoricalColor(vec4 betterColor, vec3 loc, vec3 step)
+vec4 calculateCategoricalColor(vec4 betterColor, vec3 loc, vec3 step)
 {
     // Calculate color by incorporating ambient and diffuse lighting
-    vec4 color0 = $get_data(loc);
+    vec4 color0 = $sample(u_volumetex, loc);
     vec4 color1;
     vec4 color2;
     float val0 = colorToVal(color0);
@@ -50,22 +48,22 @@ vec4 calculateShadedCategoricalColor(vec4 betterColor, vec3 loc, vec3 step)
 
     // calculate normal vector from gradient
     vec3 N; // normal
-    color1 = $get_data(loc+vec3(-step[0],0.0,0.0));
-    color2 = $get_data(loc+vec3(step[0],0.0,0.0));
+    color1 = $sample( u_volumetex, loc+vec3(-step[0],0.0,0.0) );
+    color2 = $sample( u_volumetex, loc+vec3(step[0],0.0,0.0) );
     val1 = colorToVal(color1);
     val2 = colorToVal(color2);
     N[0] = val1 - val2;
     n_bg_borders += detectAdjacentBackground(val1, val2);
 
-    color1 = $get_data(loc+vec3(0.0,-step[1],0.0));
-    color2 = $get_data(loc+vec3(0.0,step[1],0.0));
+    color1 = $sample( u_volumetex, loc+vec3(0.0,-step[1],0.0) );
+    color2 = $sample( u_volumetex, loc+vec3(0.0,step[1],0.0) );
     val1 = colorToVal(color1);
     val2 = colorToVal(color2);
     N[1] = val1 - val2;
     n_bg_borders += detectAdjacentBackground(val1, val2);
 
-    color1 = $get_data(loc+vec3(0.0,0.0,-step[2]));
-    color2 = $get_data(loc+vec3(0.0,0.0,step[2]));
+    color1 = $sample( u_volumetex, loc+vec3(0.0,0.0,-step[2]) );
+    color2 = $sample( u_volumetex, loc+vec3(0.0,0.0,step[2]) );
     val1 = colorToVal(color1);
     val2 = colorToVal(color2);
     N[2] = val1 - val2;
@@ -115,65 +113,25 @@ vec4 calculateShadedCategoricalColor(vec4 betterColor, vec3 loc, vec3 step)
 }
 """
 
-ISO_CATEGORICAL_SNIPPETS = {
-    "before_loop": """
+ISO_CATEGORICAL_SNIPPETS = dict(
+    before_loop="""
         vec4 color3 = vec4(0.0);  // final color
         vec3 dstep = 1.5 / u_shape;  // step to sample derivative, set to match iso shader
         gl_FragColor = vec4(0.0);
         bool discard_fragment = true;
-        vec4 label_id = vec4(0.0);
         """,
-    "in_loop": """
+    in_loop="""
         // check if value is different from the background value
         if ( floatNotEqual(val, categorical_bg_value) ) {
             // Take the last interval in smaller steps
             vec3 iloc = loc - step;
             for (int i=0; i<10; i++) {
-                label_id = $get_data(iloc);
-                color = sample_label_color(label_id.r);
-                if (floatNotEqual(color.a, 0) ) {
-                    // fully transparent color is considered as background, see napari/napari#5227
-                    // when the value mapped to non-transparent color is reached
-                    // calculate the shaded color (apply lighting effects)
-                    color = calculateShadedCategoricalColor(color, iloc, dstep);
-                    gl_FragColor = color;
-
-                    // set the variables for the depth buffer
-                    frag_depth_point = iloc * u_shape;
-                    discard_fragment = false;
-
-                    iter = nsteps;
-                    break;
-                }
-                iloc += step * 0.1;
-            }
-        }
-        """,
-    "after_loop": """
-        if (discard_fragment)
-            discard;
-        """,
-}
-
-TRANSLUCENT_CATEGORICAL_SNIPPETS = {
-    "before_loop": """
-        vec4 color3 = vec4(0.0);  // final color
-        gl_FragColor = vec4(0.0);
-        bool discard_fragment = true;
-        vec4 label_id = vec4(0.0);
-        """,
-    "in_loop": """
-        // check if value is different from the background value
-        if ( floatNotEqual(val, categorical_bg_value) ) {
-            // Take the last interval in smaller steps
-            vec3 iloc = loc - step;
-            for (int i=0; i<10; i++) {
-                label_id = $get_data(iloc);
-                color = sample_label_color(label_id.r);
-                if (floatNotEqual(color.a, 0) ) {
-                    // fully transparent color is considered as background, see napari/napari#5227
-                    // when the value mapped to non-transparent color is reached
+                color = $sample(u_volumetex, iloc);
+                if (floatNotEqual(color.g, categorical_bg_value) ) {
+                    // when the non-background value is reached
                     // calculate the color (apply lighting effects)
+                    color = applyColormap(color.g);
+                    color = calculateCategoricalColor(color, iloc, dstep);
                     gl_FragColor = color;
 
                     // set the variables for the depth buffer
@@ -187,11 +145,11 @@ TRANSLUCENT_CATEGORICAL_SNIPPETS = {
             }
         }
         """,
-    "after_loop": """
+    after_loop="""
         if (discard_fragment)
             discard;
         """,
-}
+)
 
 shaders = BaseVolume._shaders.copy()
 before, after = shaders['fragment'].split('void main()')
@@ -199,10 +157,9 @@ shaders['fragment'] = before + FUNCTION_DEFINITIONS + 'void main()' + after
 
 rendering_methods = BaseVolume._rendering_methods.copy()
 rendering_methods['iso_categorical'] = ISO_CATEGORICAL_SNIPPETS
-rendering_methods['translucent_categorical'] = TRANSLUCENT_CATEGORICAL_SNIPPETS
 
 
-class Volume(TextureMixin, BaseVolume):
+class Volume(BaseVolume):
     # add the new rendering method to the snippets dict
     _shaders = shaders
     _rendering_methods = rendering_methods

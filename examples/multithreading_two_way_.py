@@ -2,11 +2,9 @@
 Multithreading two-way
 ======================
 
-.. tags:: interactivity
 """
 import time
 
-import numpy as np
 from qtpy.QtWidgets import (
     QGridLayout,
     QLabel,
@@ -16,6 +14,7 @@ from qtpy.QtWidgets import (
 )
 
 import napari
+import numpy as np
 from napari.qt.threading import thread_worker
 
 
@@ -43,7 +42,7 @@ def two_way_communication_with_args(start, end):
 
 
 class Controller(QWidget):
-    def __init__(self) -> None:
+    def __init__(self):
         super().__init__()
 
         layout = QGridLayout()

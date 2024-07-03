@@ -3,20 +3,20 @@ from typing import TYPE_CHECKING, Tuple, Union
 import numpy as np
 from qtpy.QtWidgets import QGridLayout, QLabel, QWidget
 
-from napari._qt.containers import QtListView
-from napari._qt.widgets.qt_tooltip import QtToolTipLabel
-from napari.components import Dims
-from napari.utils.events import SelectableEventedList
-from napari.utils.translations import trans
+from ..._qt.containers import QtListView
+from ...components import Dims
+from ...utils.events import SelectableEventedList
+from ...utils.translations import trans
+from .qt_tooltip import QtToolTipLabel
 
 if TYPE_CHECKING:
-    from napari.viewer import Viewer
+    from ...viewer import Viewer
 
 
 class AxisModel:
     """View of an axis within a dims model keeping track of axis names."""
 
-    def __init__(self, dims: Dims, axis: int) -> None:
+    def __init__(self, dims: Dims, axis: int):
         self.dims = dims
         self.axis = axis
 
@@ -32,8 +32,8 @@ class AxisModel:
     def __eq__(self, other: Union[int, str]) -> bool:
         if isinstance(other, int):
             return self.axis == other
-
-        return repr(self) == other
+        else:
+            return repr(self) == other
 
 
 def set_dims_order(dims: Dims, order: Tuple[int, ...]):
@@ -69,7 +69,7 @@ class QtDimsSorter(QWidget):
     https://github.com/jni/zarpaint/blob/main/zarpaint/_dims_chooser.py
     """
 
-    def __init__(self, viewer: 'Viewer', parent=None) -> None:
+    def __init__(self, viewer: 'Viewer', parent=None):
         super().__init__(parent=parent)
         dims = viewer.dims
         root = SelectableEventedList(

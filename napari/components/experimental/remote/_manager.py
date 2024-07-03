@@ -2,10 +2,10 @@
 """
 import logging
 
-from napari.components.experimental.remote._commands import RemoteCommands
-from napari.components.experimental.remote._messages import RemoteMessages
-from napari.components.layerlist import LayerList
-from napari.utils.events import Event
+from ....utils.events import Event
+from ...layerlist import LayerList
+from ._commands import RemoteCommands
+from ._messages import RemoteMessages
 
 LOGGER = logging.getLogger("napari.monitor")
 
@@ -27,7 +27,7 @@ class RemoteManager:
         The viewer's layers.
     """
 
-    def __init__(self, layers: LayerList) -> None:
+    def __init__(self, layers: LayerList):
         self._commands = RemoteCommands(layers)
         self._messages = RemoteMessages(layers)
 

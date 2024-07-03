@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import List, Union
 
 import numpy as np
 from vispy.gloo import VertexBuffer
@@ -87,12 +87,13 @@ class TracksFilter(Filter):
 
     def __init__(
         self,
-        current_time: float = 0,
-        tail_length: float = 30,
-        head_length: float = 0,
+        current_time: Union[int, float] = 0,
+        tail_length: Union[int, float] = 30,
+        head_length: Union[int, float] = 0,
         use_fade: bool = True,
-        vertex_time: Optional[Union[List, np.ndarray]] = None,
-    ) -> None:
+        vertex_time: Union[List, np.ndarray] = None,
+    ):
+
         super().__init__(
             vcode=self.VERT_SHADER, vpos=3, fcode=self.FRAG_SHADER, fpos=9
         )
@@ -104,11 +105,11 @@ class TracksFilter(Filter):
         self.vertex_time = vertex_time
 
     @property
-    def current_time(self) -> float:
+    def current_time(self) -> Union[int, float]:
         return self._current_time
 
     @current_time.setter
-    def current_time(self, n: float):
+    def current_time(self, n: Union[int, float]):
         self._current_time = n
         if isinstance(n, slice):
             n = np.max(self._vertex_time)
@@ -124,20 +125,20 @@ class TracksFilter(Filter):
         self.vshader['use_fade'] = float(self._use_fade)
 
     @property
-    def tail_length(self) -> float:
+    def tail_length(self) -> Union[int, float]:
         return self._tail_length
 
     @tail_length.setter
-    def tail_length(self, tail_length: float):
+    def tail_length(self, tail_length: Union[int, float]):
         self._tail_length = tail_length
         self.vshader['tail_length'] = float(self._tail_length)
 
     @property
-    def head_length(self) -> float:
+    def head_length(self) -> Union[int, float]:
         return self._tail_length
 
     @head_length.setter
-    def head_length(self, head_length: float):
+    def head_length(self, head_length: Union[int, float]):
         self._head_length = head_length
         self.vshader['head_length'] = float(self._head_length)
 

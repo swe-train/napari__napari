@@ -2,10 +2,9 @@
 """
 import json
 from time import perf_counter_ns
-from typing import TYPE_CHECKING, List
+from typing import List
 
-if TYPE_CHECKING:
-    from napari.utils.perf._event import PerfEvent
+from ._event import PerfEvent
 
 
 class PerfTraceFile:
@@ -35,7 +34,7 @@ class PerfTraceFile:
     https://chromium.googlesource.com/catapult/+/HEAD/tracing/README.md
     """
 
-    def __init__(self, output_path: str) -> None:
+    def __init__(self, output_path: str):
         """Store events in memory and write to the file when done."""
         self.output_path = output_path
 
@@ -46,7 +45,7 @@ class PerfTraceFile:
         # of writing to a file does not bloat our timings.
         self.events: List[PerfEvent] = []
 
-    def add_event(self, event: "PerfEvent") -> None:
+    def add_event(self, event: PerfEvent) -> None:
         """Add one perf event to our in-memory list.
 
         Parameters
@@ -62,7 +61,7 @@ class PerfTraceFile:
         with open(self.output_path, "w") as outf:
             json.dump(event_data, outf)
 
-    def _get_event_data(self, event: "PerfEvent") -> dict:
+    def _get_event_data(self, event: PerfEvent) -> dict:
         """Return the data for one perf event.
 
         Parameters

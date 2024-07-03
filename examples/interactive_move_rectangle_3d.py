@@ -4,12 +4,10 @@ Interactive move rectangle
 
 Shift a rectangle along its normal vector in 3D
 
-.. tags:: experimental
 """
 
-import numpy as np
-
 import napari
+import numpy as np
 
 rectangle = np.array(
     [
@@ -50,7 +48,7 @@ def move_rectangle_along_normal(layer, event):
     if shape_index is None:
         return
 
-    layer.mouse_pan = False
+    layer.interactive = False
 
     start_position = np.copy(event.position)
     yield
@@ -66,7 +64,7 @@ def move_rectangle_along_normal(layer, event):
         new_rectangle = layer.data[shape_index] + shift_data_coordinates
         layer.add(new_rectangle)
         yield
-    layer.mouse_pan = True
+    layer.interactive = True
 
 
 if __name__ == '__main__':

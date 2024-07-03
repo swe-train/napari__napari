@@ -62,7 +62,7 @@ def test_custom_lookup(list_type):
     """Test that we can get objects by non-integer index using custom lookups."""
 
     class Custom:
-        def __init__(self, name='', data=()) -> None:
+        def __init__(self, name='', data=()):
             self.name = name
             self.data = data
 
@@ -137,7 +137,7 @@ def test_nested_type_enforcement():
 
 def test_nested_custom_lookup():
     class Custom:
-        def __init__(self, name='') -> None:
+        def __init__(self, name=''):
             self.name = name
 
     c = Custom()
@@ -145,10 +145,10 @@ def test_nested_custom_lookup():
     c2 = Custom(name='c2')
     c3 = Custom(name='c3')
 
-    a: NestableEventedList[Custom] = NestableEventedList(
+    a = NestableEventedList(
         [c, c1, [c2, [c3]]],
         basetype=Custom,
-        lookup={str: lambda x: getattr(x, 'name', '')},
+        lookup={str: lambda x: x.name},
     )
     # first level
     assert a[1].name == 'c1'  # index with integer as usual

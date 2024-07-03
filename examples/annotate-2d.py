@@ -2,16 +2,14 @@
 Annotate 2D
 ===========
 
-Display one points layer ontop of one image layer using the ``add_points`` and
-``add_image`` APIs
-
-.. tags:: analysis
+Display one points layer ontop of one image layer using the add_points and
+add_image APIs
 """
 
 import numpy as np
 from skimage import data
-
 import napari
+
 
 print("click to add points; close the window when finished.")
 

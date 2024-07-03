@@ -1,5 +1,6 @@
-from typing import List, Optional, Protocol
+from typing import List, Optional
 
+from typing_extensions import Protocol
 from vispy.visuals.filters import Filter
 from vispy.visuals.filters.clipping_planes import PlanesClipper
 
@@ -10,7 +11,6 @@ class _PVisual(Protocol):
     """
 
     _subvisuals: Optional[List['_PVisual']]
-    _clip_filter: PlanesClipper
 
     def attach(self, filt: Filter, view=None):
         ...
@@ -22,12 +22,11 @@ class ClippingPlanesMixin:
     and provides property getter and setter
     """
 
-    def __init__(self: _PVisual, *args, **kwargs) -> None:
-        clip_filter = PlanesClipper()
-        self._clip_filter = clip_filter
+    def __init__(self: _PVisual, *args, **kwargs):
+        self._clip_filter = PlanesClipper()
         super().__init__(*args, **kwargs)
 
-        self.attach(clip_filter)
+        self.attach(self._clip_filter)
 
     @property
     def clipping_planes(self):

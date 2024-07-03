@@ -5,13 +5,13 @@ a numpy array with N rows, N being the number of data points, and a dtype of np.
 """
 import warnings
 from itertools import cycle
-from typing import Tuple
+from typing import Union
 
 import numpy as np
 
-from napari.utils.colormaps.colormap_utils import ColorType
-from napari.utils.colormaps.standardize_color import transform_color
-from napari.utils.translations import trans
+from ...utils.colormaps.colormap_utils import ColorType
+from ...utils.colormaps.standardize_color import transform_color
+from ...utils.translations import trans
 
 
 def transform_color_with_defaults(
@@ -65,13 +65,13 @@ def transform_color_with_defaults(
 
 
 def transform_color_cycle(
-    color_cycle: ColorType, elem_name: str, default: str
-) -> Tuple["cycle[np.ndarray]", np.ndarray]:
+    color_cycle: Union[ColorType, cycle], elem_name: str, default: str
+) -> cycle:
     """Helper method to return an Nx4 np.array from an arbitrary user input.
 
     Parameters
     ----------
-    color_cycle : ColorType
+    color_cycle : ColorType, cycle
         The desired colors for each of the data points
     elem_name : str
         Whether we're trying to set the face color or edge color of the layer
@@ -81,7 +81,7 @@ def transform_color_cycle(
     Returns
     -------
     transformed_color_cycle : cycle
-        cycle of shape (4,) numpy arrays with a dtype of np.float32
+        cycle of Nx4 numpy arrays with a dtype of np.float32
     transformed_colors : np.ndarray
         input array of colors transformed to RGBA
     """
@@ -97,7 +97,7 @@ def transform_color_cycle(
 
 
 def normalize_and_broadcast_colors(
-    num_entries: int, colors: np.ndarray
+    num_entries: int, colors: ColorType
 ) -> np.ndarray:
     """Takes an input color array and forces into being the length of ``data``.
 
@@ -112,7 +112,7 @@ def normalize_and_broadcast_colors(
     ----------
     num_entries : int
         The number of data elements in the layer
-    colors : np.ndarray
+    colors : ColorType
         The user's input after being normalized by transform_color_with_defaults
 
     Returns

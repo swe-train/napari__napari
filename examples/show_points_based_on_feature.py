@@ -2,14 +2,13 @@
 Show points based on feature
 ============================
 
-.. tags:: visualization-advanced
 """
 #!/usr/bin/env python3
 
+import napari
 import numpy as np
 from magicgui import magicgui
 
-import napari
 
 # create points with a randomized "confidence" feature
 points = np.random.rand(100, 3) * 100

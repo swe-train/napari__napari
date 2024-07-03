@@ -2,15 +2,13 @@
 Add points with text
 ====================
 
-Display a points layer on top of an image layer using the ``add_points`` and
-``add_image`` APIs
-
-.. tags:: visualization-basic
+Display a points layer on top of an image layer using the add_points and
+add_image APIs
 """
 
 import numpy as np
-
 import napari
+
 
 # add the image
 viewer = napari.view_image(np.zeros((400, 400)))

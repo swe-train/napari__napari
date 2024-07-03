@@ -2,11 +2,11 @@
 import os
 from pathlib import Path
 
+import pydantic
 import pytest
 from yaml import safe_load
 
 from napari import settings
-from napari._pydantic_compat import Field, ValidationError
 from napari.settings import CURRENT_SCHEMA_VERSION, NapariSettings
 from napari.utils.theme import get_theme, register_theme
 
@@ -20,9 +20,7 @@ def test_settings(tmp_path):
         class Config:
             env_prefix = 'testnapari_'
 
-    return TestSettings(
-        tmp_path / 'test_settings.yml', schema_version=CURRENT_SCHEMA_VERSION
-    )
+    return TestSettings(tmp_path / 'test_settings.yml')
 
 
 def test_settings_file(test_settings):
@@ -74,7 +72,7 @@ def test_settings_load_strict(tmp_path, monkeypatch):
     data = "appearance:\n   theme: 1"
     fake_path = tmp_path / 'fake_path.yml'
     fake_path.write_text(data)
-    with pytest.raises(ValidationError):
+    with pytest.raises(pydantic.ValidationError):
         NapariSettings(fake_path)
 
 
@@ -108,8 +106,8 @@ def test_settings_load_invalid_section(tmp_path):
     fake_path = tmp_path / 'fake_path.yml'
     fake_path.write_text(data)
 
-    settings_ = NapariSettings(fake_path)
-    assert getattr(settings_, "non_existing_section", None) is None
+    settings = NapariSettings(fake_path)
+    assert getattr(settings, "non_existing_section", None) is None
 
 
 def test_settings_to_dict(test_settings):
@@ -145,11 +143,11 @@ def test_settings_reset(test_settings):
 
 
 def test_settings_model(test_settings):
-    with pytest.raises(ValidationError):
+    with pytest.raises(pydantic.error_wrappers.ValidationError):
         # Should be string
         test_settings.appearance.theme = 1
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(pydantic.error_wrappers.ValidationError):
         # Should be a valid string
         test_settings.appearance.theme = "vaporwave"
 
@@ -159,17 +157,17 @@ def test_custom_theme_settings(test_settings):
     custom_theme_name = "_test_blue_"
 
     # No theme registered yet, this should fail
-    with pytest.raises(ValidationError):
+    with pytest.raises(pydantic.error_wrappers.ValidationError):
         test_settings.appearance.theme = custom_theme_name
 
-    blue_theme = get_theme('dark').to_rgb_dict()
+    blue_theme = get_theme('dark')
     blue_theme.update(
         background='rgb(28, 31, 48)',
         foreground='rgb(45, 52, 71)',
         primary='rgb(80, 88, 108)',
         current='rgb(184, 112, 0)',
     )
-    register_theme(custom_theme_name, blue_theme, "test")
+    register_theme(custom_theme_name, blue_theme)
 
     # Theme registered, should pass validation
     test_settings.appearance.theme = custom_theme_name
@@ -219,7 +217,7 @@ def test_settings_env_variables(monkeypatch):
 
 def test_settings_env_variables_fails(monkeypatch):
     monkeypatch.setenv('NAPARI_APPEARANCE_THEME', 'FOOBAR')
-    with pytest.raises(ValidationError):
+    with pytest.raises(pydantic.ValidationError):
         NapariSettings()
 
 
@@ -228,7 +226,7 @@ def test_subfield_env_field(monkeypatch):
     from napari.settings._base import EventedSettings
 
     class Sub(EventedSettings):
-        x: int = Field(1, env='varname')
+        x: int = pydantic.Field(1, env='varname')
 
     class T(NapariSettings):
         sub: Sub
@@ -239,6 +237,7 @@ def test_subfield_env_field(monkeypatch):
 
 # Failing because dark is actually the default...
 def test_settings_env_variables_do_not_write_to_disk(tmp_path, monkeypatch):
+
     # create a settings file with light theme
     data = "appearance:\n   theme: light"
     fake_path = tmp_path / 'fake_path.yml'
@@ -294,16 +293,14 @@ def test_settings_only_saves_non_default_values(monkeypatch, tmp_path):
 
 
 def test_get_settings(tmp_path):
-    p = f'{tmp_path}.yaml'
-    s = settings.get_settings(p)
-    assert str(s.config_path) == str(p)
+    s = settings.get_settings(tmp_path)
+    assert s.config_path == tmp_path
 
 
 def test_get_settings_fails(monkeypatch, tmp_path):
-    p = f'{tmp_path}.yaml'
-    settings.get_settings(p)
+    settings.get_settings(tmp_path)
     with pytest.raises(Exception) as e:
-        settings.get_settings(p)
+        settings.get_settings(tmp_path)
 
     assert 'The path can only be set once per session' in str(e)
 

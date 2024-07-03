@@ -6,7 +6,6 @@ from qtpy import QtCore, QtGui, QtWidgets
 from ...._qt.widgets.qt_extension2reader import Extension2ReaderTable
 from ...._qt.widgets.qt_highlight_preview import QtHighlightSizePreviewWidget
 from ...._qt.widgets.qt_keyboard_settings import ShortcutEditor
-from ...._qt.widgets.qt_font_size import QtFontSizeWidget
 
 from .signal import Signal
 from .utils import is_concrete_schema, iter_layout_widgets, state_property
@@ -154,11 +153,6 @@ class SpinDoubleSchemaWidget(SchemaWidgetMixin, QtWidgets.QDoubleSpinBox):
         self.opacity = QtWidgets.QGraphicsOpacityEffect(self)
         self.setGraphicsEffect(self.opacity)
         self.opacity.setOpacity(1)
-        if 'minimum' in self.schema:
-            self.setMinimum(self.schema['minimum'])
-        if 'maximum' in self.schema:
-            self.setMaximum(self.schema['maximum'])
-
 
     def setDescription(self, description: str):
         self.description = description
@@ -645,41 +639,7 @@ class Extension2ReaderWidget(SchemaWidgetMixin, Extension2ReaderTable):
         self.setGraphicsEffect(self.opacity)
         self.opacity.setOpacity(1)
 
-
-class FontSizeSchemaWidget(SchemaWidgetMixin, QtFontSizeWidget):
-    @state_property
-    def state(self) -> int:
-        return self.value()
-
-    @state.setter
-    def state(self, state: int):
-        self.setValue(state)
-
-    def configure(self):
-        self.valueChanged.connect(self.on_changed.emit)
-        self.opacity = QtWidgets.QGraphicsOpacityEffect(self)
-        self.setGraphicsEffect(self.opacity)
-        self.opacity.setOpacity(1)
-
-        minimum = 1
-        if "minimum" in self.schema:
-            minimum = self.schema["minimum"]
-            if self.schema.get("exclusiveMinimum"):
-                minimum += 1
-
-        maximum = 100
-        if "maximum" in self.schema:
-            maximum = self.schema["maximum"]
-            if self.schema.get("exclusiveMaximum"):
-                maximum -= 1
-
-        self.setRange(minimum, maximum)
-
-    def setDescription(self, description: str):
-        self.description = description
-
-
-class ObjectSchemaWidgetMinix(SchemaWidgetMixin):
+class ObjectSchemaWidget(SchemaWidgetMixin, QtWidgets.QGroupBox):
     def __init__(
         self,
         schema: dict,
@@ -718,50 +678,6 @@ class ObjectSchemaWidgetMinix(SchemaWidgetMixin):
         ui_schema: dict,
         widget_builder: 'WidgetBuilder',
     ) -> Dict[str, QtWidgets.QWidget]:
-        raise NotImplementedError
-
-    def _prepare_widget(self, name: str, sub_schema: dict, widget_builder: 'WidgetBuilder', ui_schema: dict):
-        description = sub_schema.get('description', "")
-
-        label = QtWidgets.QLabel(sub_schema.get("title", name))
-
-        sub_ui_schema = ui_schema.get(name, {})
-        widget = widget_builder.create_widget(
-            sub_schema, sub_ui_schema, description=description
-        )  # TODO on changed
-        widget._name = name
-        widget.on_changed.connect(partial(self.widget_on_changed, name))
-
-        return label, widget
-
-class HorizontalObjectSchemaWidget(ObjectSchemaWidgetMinix, QtWidgets.QWidget):
-    def populate_from_schema(
-        self,
-        schema: dict,
-        ui_schema: dict,
-        widget_builder: 'WidgetBuilder',
-    ) -> Dict[str, QtWidgets.QWidget]:
-        layout = QtWidgets.QHBoxLayout()
-        self.setLayout(layout)
-
-        widgets = {}
-        for name, sub_schema in schema['properties'].items():
-            label, widget = self._prepare_widget(name, sub_schema, widget_builder, ui_schema)
-            layout.addWidget(label)
-            layout.addWidget(widget)
-            widgets[name] = widget
-
-        return widgets
-
-
-class ObjectSchemaWidget(ObjectSchemaWidgetMinix, QtWidgets.QGroupBox):
-
-    def populate_from_schema(
-        self,
-        schema: dict,
-        ui_schema: dict,
-        widget_builder: 'WidgetBuilder',
-    ) -> Dict[str, QtWidgets.QWidget]:
         layout = QtWidgets.QFormLayout()
         self.setLayout(layout)
         layout.setAlignment(QtCore.Qt.AlignTop)
@@ -770,16 +686,26 @@ class ObjectSchemaWidget(ObjectSchemaWidgetMinix, QtWidgets.QGroupBox):
         if 'title' in schema:
             self.setTitle(schema['title'])
 
+        if 'description' in schema:
+            self.setToolTip(schema['description'])
 
         # Populate rows
         widgets = {}
         layout.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldGrowthPolicy(1))
         for name, sub_schema in schema['properties'].items():
-            label, widget = self._prepare_widget(name, sub_schema, widget_builder, ui_schema)
-            if len(schema['properties']) == 1:
-                layout.addRow(widget)
+            if 'description' in sub_schema:
+                description = sub_schema['description']
             else:
-                layout.addRow(label, widget)
+                description = ""
+
+            sub_ui_schema = ui_schema.get(name, {})
+            widget = widget_builder.create_widget(
+                sub_schema, sub_ui_schema, description=description
+            )  # TODO onchanged
+            widget._name = name
+            widget.on_changed.connect(partial(self.widget_on_changed, name))
+            label = sub_schema.get("title", name)
+            layout.addRow(label, widget)
             widgets[name] = widget
 
         return widgets
@@ -792,7 +718,6 @@ class EnumSchemaWidget(SchemaWidgetMixin, QtWidgets.QComboBox):
 
     @state.setter
     def state(self, value):
-        value = str(value)
         index = self.findData(value)
         if index == -1:
             raise ValueError(value)

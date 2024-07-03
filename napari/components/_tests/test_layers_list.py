@@ -1,11 +1,12 @@
 import os
 
-import npe2
 import numpy as np
 import pytest
 
 from napari.components import LayerList
 from napari.layers import Image
+
+BUILTINS = 'napari'
 
 
 def test_empty_layers_list():
@@ -25,6 +26,9 @@ def test_initialize_from_list():
 
 
 def test_adding_layer():
+    """
+    Test adding a Layer
+    """
     layers = LayerList()
     layer = Image(np.random.random((10, 10)))
     layers.append(layer)
@@ -37,6 +41,9 @@ def test_adding_layer():
 
 
 def test_removing_layer():
+    """
+    Test removing a Layer
+    """
     layers = LayerList()
     layer = Image(np.random.random((10, 10)))
     layers.append(layer)
@@ -121,9 +128,8 @@ def test_clearing_layerlist():
     """Test clearing layer list."""
     layers = LayerList()
     layer = Image(np.random.random((10, 10)))
-    layer2 = Image(np.random.random((10, 10)))
     layers.append(layer)
-    layers.append(layer2)
+    layers.append(layer)
     assert len(layers) == 2
 
     layers.clear()
@@ -146,13 +152,12 @@ def test_remove_selected():
     layers.remove_selected()
     assert list(layers) == [layer_a, layer_b]
 
-    # select and remove all layers
+    # select and remove all layersay
     layers.select_all()
     layers.remove_selected()
     assert len(layers) == 0
 
 
-@pytest.mark.filterwarnings('ignore::FutureWarning')
 def test_move_selected():
     """
     Test removing selected layers
@@ -325,7 +330,7 @@ def test_toggle_visibility():
 
 # the layer_data_and_types fixture is defined in napari/conftest.py
 @pytest.mark.filterwarnings('ignore:distutils Version classes are deprecated')
-def test_layers_save(builtins, tmpdir, layer_data_and_types):
+def test_layers_save(tmpdir, layer_data_and_types):
     """Test saving all layer data."""
     list_of_layers, _, _, filenames = layer_data_and_types
     layers = LayerList(list_of_layers)
@@ -336,7 +341,7 @@ def test_layers_save(builtins, tmpdir, layer_data_and_types):
     assert not os.path.isdir(path)
 
     # Write data
-    layers.save(path, plugin=builtins.name)
+    layers.save(path, plugin=BUILTINS)
 
     # Check folder now exists
     assert os.path.isdir(path)
@@ -351,7 +356,7 @@ def test_layers_save(builtins, tmpdir, layer_data_and_types):
 
 
 # the layer_data_and_types fixture is defined in napari/conftest.py
-def test_layers_save_none_selected(builtins, tmpdir, layer_data_and_types):
+def test_layers_save_none_selected(tmpdir, layer_data_and_types):
     """Test saving all layer data."""
     list_of_layers, _, _, filenames = layer_data_and_types
     layers = LayerList(list_of_layers)
@@ -364,7 +369,7 @@ def test_layers_save_none_selected(builtins, tmpdir, layer_data_and_types):
 
     # Write data (will get a warning that nothing is selected)
     with pytest.warns(UserWarning):
-        layers.save(path, selected=True, plugin=builtins.name)
+        layers.save(path, selected=True, plugin=BUILTINS)
 
     # Check folder still does not exist
     assert not os.path.isdir(path)
@@ -378,7 +383,7 @@ def test_layers_save_none_selected(builtins, tmpdir, layer_data_and_types):
 
 
 # the layer_data_and_types fixture is defined in napari/conftest.py
-def test_layers_save_selected(builtins, tmpdir, layer_data_and_types):
+def test_layers_save_selected(tmpdir, layer_data_and_types):
     """Test saving all layer data."""
     list_of_layers, _, _, filenames = layer_data_and_types
     layers = LayerList(list_of_layers)
@@ -391,7 +396,7 @@ def test_layers_save_selected(builtins, tmpdir, layer_data_and_types):
     assert not os.path.isdir(path)
 
     # Write data
-    layers.save(path, selected=True, plugin=builtins.name)
+    layers.save(path, selected=True, plugin=BUILTINS)
 
     # Check folder exists
     assert os.path.isdir(path)
@@ -411,9 +416,6 @@ def test_layers_save_selected(builtins, tmpdir, layer_data_and_types):
 @pytest.mark.filterwarnings('ignore:`np.int` is a deprecated alias for')
 def test_layers_save_svg(tmpdir, layers, napari_svg_name):
     """Test saving all layer data to an svg."""
-    pm = npe2.PluginManager.instance()
-    pm.register(npe2.PluginManifest.from_distribution('napari-svg'))
-
     path = os.path.join(tmpdir, 'layers_file.svg')
 
     # Check file does not exist
@@ -432,8 +434,8 @@ def test_world_extent():
     layers = LayerList()
 
     # Empty data is taken to be 512 x 512
-    np.testing.assert_allclose(layers.extent.world[0], (0, 0))
-    np.testing.assert_allclose(layers.extent.world[1], (511, 511))
+    np.testing.assert_allclose(layers.extent.world[0], (-0.5, -0.5))
+    np.testing.assert_allclose(layers.extent.world[1], (511.5, 511.5))
     np.testing.assert_allclose(layers.extent.step, (1, 1))
 
     # Add one layer
@@ -441,10 +443,10 @@ def test_world_extent():
         np.random.random((6, 10, 15)), scale=(3, 1, 1), translate=(10, 20, 5)
     )
     layers.append(layer_a)
-    np.testing.assert_allclose(layer_a.extent.world[0], (10, 20, 5))
-    np.testing.assert_allclose(layer_a.extent.world[1], (25, 29, 19))
-    np.testing.assert_allclose(layers.extent.world[0], (10, 20, 5))
-    np.testing.assert_allclose(layers.extent.world[1], (25, 29, 19))
+    np.testing.assert_allclose(layer_a.extent.world[0], (8.5, 19.5, 4.5))
+    np.testing.assert_allclose(layer_a.extent.world[1], (26.5, 29.5, 19.5))
+    np.testing.assert_allclose(layers.extent.world[0], (8.5, 19.5, 4.5))
+    np.testing.assert_allclose(layers.extent.world[1], (26.5, 29.5, 19.5))
     np.testing.assert_allclose(layers.extent.step, (3, 1, 1))
 
     # Add another layer
@@ -452,10 +454,10 @@ def test_world_extent():
         np.random.random((8, 6, 15)), scale=(6, 2, 1), translate=(-5, -10, 10)
     )
     layers.append(layer_b)
-    np.testing.assert_allclose(layer_b.extent.world[0], (-5, -10, 10))
-    np.testing.assert_allclose(layer_b.extent.world[1], (37, 0, 24))
-    np.testing.assert_allclose(layers.extent.world[0], (-5, -10, 5))
-    np.testing.assert_allclose(layers.extent.world[1], (37, 29, 24))
+    np.testing.assert_allclose(layer_b.extent.world[0], (-8, -11, 9.5))
+    np.testing.assert_allclose(layer_b.extent.world[1], (40, 1, 24.5))
+    np.testing.assert_allclose(layers.extent.world[0], (-8, -11, 4.5))
+    np.testing.assert_allclose(layers.extent.world[1], (40, 29.5, 24.5))
     np.testing.assert_allclose(layers.extent.step, (3, 1, 1))
 
 
@@ -467,14 +469,18 @@ def test_world_extent_mixed_ndim():
     # Add 3D layer
     layer_a = Image(np.random.random((15, 15, 15)), scale=(4, 12, 2))
     layers.append(layer_a)
-    np.testing.assert_allclose(layers.extent.world[0], (0, 0, 0))
-    np.testing.assert_allclose(layers.extent.world[1], (56, 168, 28))
+    np.testing.assert_allclose(layers.extent.world[1], (58, 174, 29))
+    np.testing.assert_allclose(
+        layers.extent.world[1] - layers.extent.world[0], (60, 180, 30)
+    )
 
     # Add 2D layer
     layer_b = Image(np.random.random((10, 10)), scale=(6, 4))
     layers.append(layer_b)
-    np.testing.assert_allclose(layers.extent.world[0], (0, 0, 0))
-    np.testing.assert_allclose(layers.extent.world[1], (56, 168, 36))
+    np.testing.assert_allclose(layers.extent.world[1], (58, 174, 38))
+    np.testing.assert_allclose(
+        layers.extent.world[1] - layers.extent.world[0], (60, 180, 40)
+    )
     np.testing.assert_allclose(layers.extent.step, (4, 6, 2))
 
 
@@ -522,36 +528,3 @@ def test_name_uniqueness():
     layers.append(Image(np.random.random((10, 15)), name="Image"))
     layers.append(Image(np.random.random((10, 15)), name="Image"))
     assert [x.name for x in layers] == ['Image [1]', 'Image', 'Image [2]']
-
-
-def test_readd_layers():
-    layers = LayerList()
-    imgs = []
-    for _i in range(5):
-        img = Image(np.random.rand(10, 10, 10))
-        layers.append(img)
-        imgs.append(img)
-
-    assert layers == imgs
-
-    with pytest.raises(ValueError):
-        layers.append(imgs[1])
-    assert layers == imgs
-
-    layers[1] = layers[1]
-    assert layers == imgs
-
-    with pytest.raises(ValueError):
-        layers[1] = layers[2]
-    assert layers == imgs
-
-    layers[:3] = layers[:3]
-    assert layers == imgs
-
-    # invert a section
-    layers[:3] = layers[2::-1]
-    assert set(layers) == set(imgs)
-
-    with pytest.raises(ValueError):
-        layers[:3] = layers[:]
-    assert set(layers) == set(imgs)

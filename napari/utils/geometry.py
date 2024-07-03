@@ -1,7 +1,6 @@
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 
 import numpy as np
-import numpy.typing as npt
 
 # normal vectors for a 3D axis-aligned box
 # coordinates are ordered [z, y, x]
@@ -98,9 +97,7 @@ def rotation_matrix_from_vectors_2d(
     return rotation_matrix
 
 
-def rotation_matrix_from_vectors_3d(
-    vec_1: np.ndarray, vec_2: np.ndarray
-) -> np.ndarray:
+def rotation_matrix_from_vectors_3d(vec_1, vec_2):
     """Calculate the rotation matrix that aligns vec1 to vec2.
 
     Parameters
@@ -389,10 +386,10 @@ def inside_triangles(triangles):
 
 
 def intersect_line_with_plane_3d(
-    line_position: npt.ArrayLike,
-    line_direction: npt.ArrayLike,
-    plane_position: npt.ArrayLike,
-    plane_normal: npt.ArrayLike,
+    line_position: np.ndarray,
+    line_direction: np.ndarray,
+    plane_position: np.ndarray,
+    plane_normal: np.ndarray,
 ) -> np.ndarray:
     """Find the intersection of a line with an arbitrarily oriented plane in 3D.
     The line is defined by a position and a direction vector.
@@ -493,7 +490,7 @@ def intersect_line_with_multiple_planes_3d(
 
 def intersect_line_with_triangles(
     line_point: np.ndarray, line_direction: np.ndarray, triangles: np.ndarray
-) -> np.ndarray:
+):
     """Find the intersection of a ray with a set of triangles.
 
     This function does not test whether the ray intersects the triangles, so you should
@@ -558,7 +555,10 @@ def point_in_quadrilateral_2d(
         (quadrilateral[[0, 1, 2]], quadrilateral[[0, 2, 3]])
     )
     in_triangles = inside_triangles(triangle_vertices - point)
-    return in_triangles.sum() >= 1
+    if in_triangles.sum() < 1:
+        return False
+    else:
+        return True
 
 
 def line_in_quadrilateral_3d(
@@ -604,7 +604,7 @@ def line_in_quadrilateral_3d(
     rotated_vertices, rotation_matrix = rotate_points(
         points=vertices_plane,
         current_plane_normal=line_direction,
-        new_plane_normal=np.array([0, 0, 1]),
+        new_plane_normal=[0, 0, 1],
     )
     quadrilateral_2D = rotated_vertices[:, :2]
     click_pos_2D = rotation_matrix.dot(line_point)[:2]
@@ -646,7 +646,7 @@ def line_in_triangles_3d(
 
     # rotate the plane to make the triangles 2D
     rotation_matrix = rotation_matrix_from_vectors_3d(
-        line_direction, np.array([0, 0, 1])
+        line_direction, [0, 0, 1]
     )
     rotated_vertices = vertices_plane @ rotation_matrix.T
 
@@ -690,15 +690,16 @@ def find_front_back_face(
 
     bbox_face_coords = bounding_box_to_face_vertices(bounding_box)
     for k, v in FACE_NORMALS.items():
-        if np.dot(view_dir, v) < -0.001:
+        if (np.dot(view_dir, v) + 0.001) < 0:
             if line_in_quadrilateral_3d(
                 click_pos, view_dir, bbox_face_coords[k]
             ):
                 front_face_normal = v
-        elif line_in_quadrilateral_3d(
-            click_pos, view_dir, bbox_face_coords[k]
-        ):
-            back_face_normal = v
+        elif (np.dot(view_dir, v) + 0.001) > 0:
+            if line_in_quadrilateral_3d(
+                click_pos, view_dir, bbox_face_coords[k]
+            ):
+                back_face_normal = v
         if front_face_normal is not None and back_face_normal is not None:
             # stop looping if both the front and back faces have been found
             break
@@ -782,58 +783,3 @@ def distance_between_point_and_line_3d(
     )
     distance = np.linalg.norm(point - closest_point_on_line)
     return distance
-
-
-def find_nearest_triangle_intersection(
-    ray_position: np.ndarray, ray_direction: np.ndarray, triangles: np.ndarray
-) -> Tuple[Optional[int], Optional[np.ndarray]]:
-    """Given an array of triangles, find the index and intersection location
-    of a ray and the nearest triangle.
-
-    This returns only the triangle closest to the the ray_position.
-
-    Parameters
-    ----------
-    ray_position : np.ndarray
-        The coordinate of the starting point of the ray.
-    ray_direction : np.ndarray
-        A unit vector describing the direction of the ray.
-    triangles : np.ndarray
-        (N, 3, 3) array containing the vertices of the triangles.
-
-    Returns
-    -------
-    closest_intersected_triangle_index : int
-        The index of the intersected triangle.
-    intersection : np.ndarray
-        The coordinate of where the ray intersects the triangle.
-    """
-    inside = line_in_triangles_3d(
-        line_point=ray_position,
-        line_direction=ray_direction,
-        triangles=triangles,
-    )
-
-    n_intersected_triangles = np.sum(inside)
-    if n_intersected_triangles == 0:
-        return None, None
-
-    # find the intersection points for the
-    intersected_triangles = triangles[inside]
-    intersection_points = intersect_line_with_triangles(
-        line_point=ray_position,
-        line_direction=ray_direction,
-        triangles=intersected_triangles,
-    )
-
-    # find the intersection closest to the start point of the ray and return
-    start_to_intersection = intersection_points - ray_position
-    distances = np.linalg.norm(start_to_intersection, axis=1)
-    closest_triangle_index = np.argmin(distances)
-    intersected_triangle_indices = np.argwhere(inside)
-    closest_intersected_triangle_index = intersected_triangle_indices[
-        closest_triangle_index
-    ][0]
-    intersection = intersection_points[closest_triangle_index]
-
-    return closest_intersected_triangle_index, intersection

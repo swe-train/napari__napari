@@ -1,8 +1,6 @@
 import numpy as np
 import pytest
 
-from napari.components.viewer_model import ViewerModel
-
 dtypes = [
     np.dtype(bool),
     np.dtype(np.int8),
@@ -20,15 +18,15 @@ dtypes = [
 
 
 @pytest.mark.parametrize('dtype', dtypes)
-def test_image_dytpes(dtype):
+def test_image_dytpes(make_napari_viewer, dtype):
     """Test different dtype images."""
     np.random.seed(0)
-    viewer = ViewerModel()
+    viewer = make_napari_viewer()
 
     # add dtype image data
     data = np.random.randint(20, size=(30, 40)).astype(dtype)
     viewer.add_image(data)
-    np.testing.assert_array_equal(viewer.layers[0].data, data)
+    assert np.all(viewer.layers[0].data == data)
 
     # add dtype multiscale data
     data = [

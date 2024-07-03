@@ -6,8 +6,6 @@ An example of calling a threaded function from a magicgui ``dock_widget``.
 
 using ``ThreadPoolExecutor``
 Note: this example requires python >= 3.9
-
-.. tags:: gui
 """
 import sys
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -51,13 +49,12 @@ def make_widget(
             threshold=threshold,
         )
         data = blobs[:, : image.ndim]
-        kwargs = {
-            "size": blobs[:, -1],
-            "edge_color": "red",
-            "edge_width": 2,
-            "edge_width_is_relative": False,
-            "face_color": "transparent",
-        }
+        kwargs = dict(
+            size=blobs[:, -1],
+            edge_color="red",
+            edge_width=2,
+            face_color="transparent",
+        )
         return (data, kwargs, 'points')
 
     return pool.submit(_make_blob)

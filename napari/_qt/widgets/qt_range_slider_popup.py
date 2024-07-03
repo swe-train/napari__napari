@@ -2,31 +2,28 @@ from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication, QHBoxLayout
 from superqt import QLabeledDoubleRangeSlider
 
-from napari._qt.dialogs.qt_modal import QtPopup
+from ..dialogs.qt_modal import QtPopup
 
 
 class QRangeSliderPopup(QtPopup):
-    """A popup window that contains a labeled range slider and buttons.
+    def __init__(self, parent=None):
+        """A popup window that contains a labeled range slider and buttons.
 
-    Parameters
-    ----------
-    parent : QWidget, optional
-        Will like be an instance of QtLayerControls.  Note, providing
-        parent can be useful to inherit stylesheets.
+        Parameters
+        ----------
+        parent : QWidget, optional
+            Will like be an instance of QtLayerControls.  Note, providing
+            parent can be useful to inherit stylesheets.
 
-    Attributes
-    ----------
-    slider : QLabeledRangeSlider
-        Slider widget.
-    """
-
-    def __init__(self, parent=None) -> None:
+        Attributes
+        ----------
+        slider : QLabeledRangeSlider
+            Slider widget.
+        """
         super().__init__(parent)
 
         # create slider
-        self.slider = QLabeledDoubleRangeSlider(
-            Qt.Orientation.Horizontal, parent
-        )
+        self.slider = QLabeledDoubleRangeSlider(Qt.Horizontal, parent)
         self.slider.label_shift_x = 2
         self.slider.label_shift_y = 2
         self.slider.setFocus()
@@ -44,12 +41,12 @@ class QRangeSliderPopup(QtPopup):
 
         Parameters
         ----------
-        event : qtpy.QtCore.QKeyEvent
+        event : qtpy.QtCore.QEvent
             Event from the Qt context.
         """
         # we override the parent keyPressEvent so that hitting enter does not
         # hide the window... but we do want to lose focus on the lineEdits
-        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
             self.slider.setFocus()
             return
         super().keyPressEvent(event)

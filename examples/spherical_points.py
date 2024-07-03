@@ -2,11 +2,10 @@
 Spherical points
 ================
 
-.. tags:: experimental
 """
+import napari
 import numpy as np
 
-import napari
 
 np.random.seed()
 
@@ -23,9 +22,9 @@ pts_layer = viewer.add_points(
     edge_width=0,
 )
 
-# antialiasing is currently a bit broken, this is especially bad in 3D so
-# we turn it off here
-pts_layer.antialiasing = 0
+# antialias is currently a bit broken, which is especially bad in 3D
+# we can use a private attribute for now (beware, this is not public API!)
+pts_layer._antialias = 0
 
 viewer.reset_view()
 

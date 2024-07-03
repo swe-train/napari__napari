@@ -1,6 +1,8 @@
-from napari.components.overlays.text import TextOverlay
+"""Test label"""
+from napari.components.text_overlay import TextOverlay
 
 
-def test_text_overlay():
+def test_label():
+    """Test creating label object"""
     label = TextOverlay()
     assert label is not None

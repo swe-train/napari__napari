@@ -4,19 +4,18 @@ Live tiffs generator
 
 Simulation of microscope acquisition. This code generates time series tiffs in
 an output directory (must be supplied by the user).
-
-.. tags:: experimental
 """
 
 
-import argparse
 import os
 import sys
 import time
+import argparse
 
 import numpy as np
-import tifffile
 from skimage import data
+import tifffile
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument('outdir', help='output directory for tiffs')
@@ -49,8 +48,8 @@ def main(argv=sys.argv[1:]):
         )
         time.sleep(sleep_time)
     # create a final.log file as an indicator for end of acquisition
-    with open(os.path.join(outdir, 'final.log'), 'w'):
-        pass
+    final_file = open(os.path.join(outdir, 'final.log'), 'w')
+    final_file.close()
 
 
 if __name__ == '__main__':

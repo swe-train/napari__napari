@@ -2,17 +2,15 @@
 Layers
 ======
 
-Display multiple image layers using the ``add_image`` API and then reorder them
+Display multiple image layers using the add_image API and then reorder them
 using the layers swap method and remove one
-
-.. tags:: visualization-basic
 """
 
-import numpy as np
 from skimage import data
 from skimage.color import rgb2gray
-
+import numpy as np
 import napari
+
 
 # create the viewer with several image layers
 viewer = napari.view_image(rgb2gray(data.astronaut()), name='astronaut')

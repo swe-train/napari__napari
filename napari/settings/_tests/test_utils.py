@@ -1,3 +1,4 @@
+from napari._tests.utils import restore_settings_on_exit
 from napari.settings import get_settings
 from napari.settings._utils import _coerce_extensions_to_globs
 
@@ -21,11 +22,12 @@ def test_coercion_to_glob_excludes_non_extensions():
 
 
 def test_coercion_to_glob_doesnt_change_settings():
-    settings = {'*.tif': 'fake-plugin', '.csv': 'other-plugin'}
-    get_settings().plugins.extension2reader = settings
-    settings = _coerce_extensions_to_globs(settings)
-    assert settings == {'*.tif': 'fake-plugin', '*.csv': 'other-plugin'}
-    assert get_settings().plugins.extension2reader == {
-        '*.tif': 'fake-plugin',
-        '.csv': 'other-plugin',
-    }
+    with restore_settings_on_exit():
+        settings = {'*.tif': 'fake-plugin', '.csv': 'other-plugin'}
+        get_settings().plugins.extension2reader = settings
+        settings = _coerce_extensions_to_globs(settings)
+        assert settings == {'*.tif': 'fake-plugin', '*.csv': 'other-plugin'}
+        assert get_settings().plugins.extension2reader == {
+            '*.tif': 'fake-plugin',
+            '.csv': 'other-plugin',
+        }

@@ -1,10 +1,11 @@
-import time
-
 import numpy as np
 import pytest
-from npe2 import DynamicPlugin
 
-from napari._tests.utils import good_layer_data, layer_test_data
+from napari._tests.utils import (
+    good_layer_data,
+    layer_test_data,
+    restore_settings_on_exit,
+)
 from napari.components import ViewerModel
 from napari.errors import MultipleReaderError, ReaderPluginError
 from napari.errors.reader_errors import NoAvailableReaderError
@@ -33,7 +34,7 @@ def test_add_image():
     data = np.random.random((10, 15))
     viewer.add_image(data)
     assert len(viewer.layers) == 1
-    assert np.array_equal(viewer.layers[0].data, data)
+    assert np.all(viewer.layers[0].data == data)
     assert viewer.dims.ndim == 2
 
 
@@ -88,7 +89,7 @@ def test_add_volume():
     data = np.random.random((10, 15, 20))
     viewer.add_image(data)
     assert len(viewer.layers) == 1
-    assert np.array_equal(viewer.layers[0].data, data)
+    assert np.all(viewer.layers[0].data == data)
     assert viewer.dims.ndim == 3
 
 
@@ -100,26 +101,7 @@ def test_add_multiscale():
     data = [np.random.random(s) for s in shapes]
     viewer.add_image(data, multiscale=True)
     assert len(viewer.layers) == 1
-    # this is not an nd array but a list of ndarray.
-    # I think that might be a edge case of MultiScaleData.
-    assert viewer.layers[0].data == data
-    assert viewer.dims.ndim == 2
-
-
-def test_add_multiscale_image_with_negative_floats():
-    """See https://github.com/napari/napari/issues/5257"""
-    viewer = ViewerModel()
-    shapes = [(20, 10), (10, 5)]
-    data = [np.zeros(s, dtype=np.float64) for s in shapes]
-    data[0][-4:, -2:] = -1
-    data[1][-2:, -1:] = -1
-
-    viewer.add_image(data, multiscale=True)
-
-    assert len(viewer.layers) == 1
-    # this is not an nd array but a list of ndarray.
-    # I think that might be a edge case of MultiScaleData.
-    assert viewer.layers[0].data == data
+    assert np.all(viewer.layers[0].data == data)
     assert viewer.dims.ndim == 2
 
 
@@ -130,7 +112,7 @@ def test_add_labels():
     data = np.random.randint(20, size=(10, 15))
     viewer.add_labels(data)
     assert len(viewer.layers) == 1
-    assert np.array_equal(viewer.layers[0].data, data)
+    assert np.all(viewer.layers[0].data == data)
     assert viewer.dims.ndim == 2
 
 
@@ -141,7 +123,7 @@ def test_add_points():
     data = 20 * np.random.random((10, 2))
     viewer.add_points(data)
     assert len(viewer.layers) == 1
-    assert np.array_equal(viewer.layers[0].data, data)
+    assert np.all(viewer.layers[0].data == data)
     assert viewer.dims.ndim == 2
 
 
@@ -151,7 +133,7 @@ def test_single_point_dims():
     shape = (1, 3)
     data = np.zeros(shape)
     viewer.add_points(data)
-    assert all(r == (0.0, 0.0, 1.0) for r in viewer.dims.range)
+    assert all(r == (0.0, 1.0, 1.0) for r in viewer.dims.range)
 
 
 def test_add_empty_points_to_empty_viewer():
@@ -189,7 +171,7 @@ def test_add_vectors():
     data = 20 * np.random.random((10, 2, 2))
     viewer.add_vectors(data)
     assert len(viewer.layers) == 1
-    assert np.array_equal(viewer.layers[0].data, data)
+    assert np.all(viewer.layers[0].data == data)
     assert viewer.dims.ndim == 2
 
 
@@ -200,7 +182,7 @@ def test_add_shapes():
     data = 20 * np.random.random((10, 4, 2))
     viewer.add_shapes(data)
     assert len(viewer.layers) == 1
-    assert np.array_equal(viewer.layers[0].data, data)
+    assert np.all(viewer.layers[0].data == data)
     assert viewer.dims.ndim == 2
 
 
@@ -215,7 +197,7 @@ def test_add_surface():
     viewer.add_surface(data)
     assert len(viewer.layers) == 1
     assert np.all(
-        [np.array_equal(vd, d) for vd, d in zip(viewer.layers[0].data, data)]
+        [np.all(vd == d) for vd, d in zip(viewer.layers[0].data, data)]
     )
     assert viewer.dims.ndim == 3
 
@@ -227,13 +209,13 @@ def test_mix_dims():
     data = np.random.random((10, 15))
     viewer.add_image(data)
     assert len(viewer.layers) == 1
-    assert np.array_equal(viewer.layers[0].data, data)
+    assert np.all(viewer.layers[0].data == data)
     assert viewer.dims.ndim == 2
 
     data = np.random.random((6, 10, 15))
     viewer.add_image(data)
     assert len(viewer.layers) == 2
-    assert np.array_equal(viewer.layers[1].data, data)
+    assert np.all(viewer.layers[1].data == data)
     assert viewer.dims.ndim == 3
 
 
@@ -322,30 +304,17 @@ def test_view_centering_with_points_add():
 
     viewer = ViewerModel()
     viewer.add_image(image)
-    assert tuple(viewer.dims.point) == (2, 4, 4)
+    assert tuple(viewer.dims.point) == (2, 5, 5)
 
     viewer.dims.set_point(0, 0)
     # viewer point shouldn't change after this
-    assert tuple(viewer.dims.point) == (0, 4, 4)
+    assert tuple(viewer.dims.point) == (0, 5, 5)
 
     pts_layer = viewer.add_points(ndim=3)
-    assert tuple(viewer.dims.point) == (0, 4, 4)
+    assert tuple(viewer.dims.point) == (0, 5, 5)
 
     pts_layer.add([(0, 8, 8)])
-    assert tuple(viewer.dims.point) == (0, 4, 4)
-
-
-def test_view_centering_with_scale():
-    """Regression test for issue #5735"""
-    image = np.zeros((5, 10, 10))
-
-    viewer = ViewerModel()
-    viewer.add_image(image, scale=(1, 1, 1))
-    assert tuple(viewer.dims.point) == (2, 4, 4)
-
-    viewer.layers.pop()
-    viewer.add_image(image, scale=(2, 1, 1))
-    assert tuple(viewer.dims.point) == (4, 4, 4)
+    assert tuple(viewer.dims.point) == (0, 5, 5)
 
 
 def test_new_shapes():
@@ -374,8 +343,8 @@ def test_swappable_dims():
     np.random.seed(0)
     image_data = np.random.random((7, 12, 10, 15))
     image_name = viewer.add_image(image_data).name
-    assert np.array_equal(
-        viewer.layers[image_name]._data_view, image_data[3, 5, :, :]
+    assert np.all(
+        viewer.layers[image_name]._data_view == image_data[3, 6, :, :]
     )
 
     points_data = np.random.randint(6, size=(10, 4))
@@ -388,18 +357,18 @@ def test_swappable_dims():
     labels_name = viewer.add_labels(labels_data).name
     # midpoints indices into the data below depend on the data range.
     # This depends on the values in vectors_data and thus the random seed.
-    assert np.array_equal(
-        viewer.layers[labels_name]._slice.image.raw, labels_data[3, 5, :, :]
+    assert np.all(
+        viewer.layers[labels_name]._slice.image.raw == labels_data[3, 6, :, :]
     )
 
     # Swap dims
     viewer.dims.order = [0, 2, 1, 3]
     assert viewer.dims.order == (0, 2, 1, 3)
-    assert np.array_equal(
-        viewer.layers[image_name]._data_view, image_data[3, :, 4, :]
+    assert np.all(
+        viewer.layers[image_name]._data_view == image_data[3, :, 5, :]
     )
-    assert np.array_equal(
-        viewer.layers[labels_name]._slice.image.raw, labels_data[3, :, 4, :]
+    assert np.all(
+        viewer.layers[labels_name]._slice.image.raw == labels_data[3, :, 5, :]
     )
 
 
@@ -409,7 +378,7 @@ def test_grid():
 
     np.random.seed(0)
     # Add image
-    for _i in range(6):
+    for i in range(6):
         data = np.random.random((15, 15))
         viewer.add_image(data)
     assert not viewer.grid.enabled
@@ -474,7 +443,7 @@ def test_add_remove_layer_dims_change():
     data = np.random.random((10, 15, 20))
     layer = viewer.add_image(data)
     assert len(viewer.layers) == 1
-    assert np.array_equal(viewer.layers[0].data, data)
+    assert np.all(viewer.layers[0].data == data)
     assert viewer.dims.ndim == 3
 
     # Remove layer and check ndim returns to 2
@@ -610,9 +579,6 @@ def test_active_layer_status_update():
     assert len(viewer.layers) == 2
     assert viewer.layers.selection.active == viewer.layers[1]
 
-    # wait 1 s to avoid the cursor event throttling
-    time.sleep(1)
-    viewer.mouse_over_canvas = True
     viewer.cursor.position = [1, 1, 1, 1, 1]
     assert viewer.status == viewer.layers.selection.active.get_status(
         viewer.cursor.position, world=True
@@ -660,38 +626,24 @@ def test_sliced_world_extent():
     viewer = ViewerModel()
 
     # Empty data is taken to be 512 x 512
-    np.testing.assert_allclose(
-        viewer._sliced_extent_world_augmented[0], (-0.5, -0.5)
-    )
-    np.testing.assert_allclose(
-        viewer._sliced_extent_world_augmented[1], (511.5, 511.5)
-    )
+    np.testing.assert_allclose(viewer._sliced_extent_world[0], (-0.5, -0.5))
+    np.testing.assert_allclose(viewer._sliced_extent_world[1], (511.5, 511.5))
 
     # Add one layer
     viewer.add_image(
         np.random.random((6, 10, 15)), scale=(3, 1, 1), translate=(10, 20, 5)
     )
+    np.testing.assert_allclose(viewer.layers.extent.world[0], (8.5, 19.5, 4.5))
     np.testing.assert_allclose(
-        viewer.layers._extent_world_augmented[0], (8.5, 19.5, 4.5)
+        viewer.layers.extent.world[1], (26.5, 29.5, 19.5)
     )
-    np.testing.assert_allclose(
-        viewer.layers._extent_world_augmented[1], (26.5, 29.5, 19.5)
-    )
-    np.testing.assert_allclose(
-        viewer._sliced_extent_world_augmented[0], (19.5, 4.5)
-    )
-    np.testing.assert_allclose(
-        viewer._sliced_extent_world_augmented[1], (29.5, 19.5)
-    )
+    np.testing.assert_allclose(viewer._sliced_extent_world[0], (19.5, 4.5))
+    np.testing.assert_allclose(viewer._sliced_extent_world[1], (29.5, 19.5))
 
     # Change displayed dims order
     viewer.dims.order = (1, 2, 0)
-    np.testing.assert_allclose(
-        viewer._sliced_extent_world_augmented[0], (4.5, 8.5)
-    )
-    np.testing.assert_allclose(
-        viewer._sliced_extent_world_augmented[1], (19.5, 26.5)
-    )
+    np.testing.assert_allclose(viewer._sliced_extent_world[0], (4.5, 8.5))
+    np.testing.assert_allclose(viewer._sliced_extent_world[1], (19.5, 26.5))
 
 
 def test_camera():
@@ -701,7 +653,7 @@ def test_camera():
     data = np.random.random((10, 15, 20))
     viewer.add_image(data)
     assert len(viewer.layers) == 1
-    assert np.array_equal(viewer.layers[0].data, data)
+    assert np.all(viewer.layers[0].data == data)
     assert viewer.dims.ndim == 3
 
     assert viewer.dims.ndisplay == 2
@@ -725,11 +677,11 @@ def test_update_scale():
     shape = (10, 15, 20)
     data = np.random.random(shape)
     viewer.add_image(data)
-    assert viewer.dims.range == tuple((0.0, x - 1, 1.0) for x in shape)
+    assert viewer.dims.range == tuple((0.0, x, 1.0) for x in shape)
     scale = (3.0, 2.0, 1.0)
     viewer.layers[0].scale = scale
     assert viewer.dims.range == tuple(
-        (0.0, (x - 1) * s, s) for x, s in zip(shape, scale)
+        (0.0, x * s, s) for x, s in zip(shape, scale)
     )
 
 
@@ -743,7 +695,7 @@ def test_add_remove_layer_no_callbacks(Layer, data, ndim):
     assert layer.ndim == ndim
 
     # Check that no internal callbacks have been registered
-    assert len(layer.events.callbacks) == 0
+    len(layer.events.callbacks) == 0
     for em in layer.events.emitters.values():
         assert len(em.callbacks) == 0
 
@@ -780,7 +732,7 @@ def test_add_remove_layer_external_callbacks(Layer, data, ndim):
     layer.events.connect(my_custom_callback)
 
     # Check that no internal callbacks have been registered
-    assert len(layer.events.callbacks) == 1
+    len(layer.events.callbacks) == 1
     for em in layer.events.emitters.values():
         if not isinstance(em, WarningEmitter):
             assert len(em.callbacks) == 1
@@ -804,7 +756,7 @@ def test_add_remove_layer_external_callbacks(Layer, data, ndim):
 
 
 @pytest.mark.parametrize(
-    'field', ['camera', 'cursor', 'dims', 'grid', 'layers']
+    'field', ['camera', 'cursor', 'dims', 'grid', 'layers', 'scale_bar']
 )
 def test_not_mutable_fields(field):
     """Test appropriate fields are not mutable."""
@@ -816,7 +768,7 @@ def test_not_mutable_fields(field):
     assert not hasattr(viewer.events, field)
 
     # Check attribute is not settable
-    with pytest.raises((TypeError, ValueError)) as err:
+    with pytest.raises(TypeError) as err:
         setattr(viewer, field, 'test')
 
     assert 'has allow_mutation set to False and cannot be assigned' in str(
@@ -831,6 +783,7 @@ def test_status_tooltip(Layer, data, ndim):
     layer = Layer(data)
     viewer.layers.append(layer)
     viewer.cursor.position = (1,) * ndim
+    viewer._on_cursor_position_change()
 
 
 def test_viewer_object_event_sources():
@@ -839,18 +792,12 @@ def test_viewer_object_event_sources():
     assert viewer.camera.events.source is viewer.camera
 
 
-def test_open_or_get_error_multiple_readers(tmp_plugin: DynamicPlugin):
+def test_open_or_get_error_multiple_readers(mock_npe2_pm, tmp_reader):
     """Assert error is returned when multiple plugins are available to read."""
     viewer = ViewerModel()
-    tmp2 = tmp_plugin.spawn(register=True)
 
-    @tmp_plugin.contribute.reader(filename_patterns=['*.fake'])
-    def _(path):
-        ...
-
-    @tmp2.contribute.reader(filename_patterns=['*.fake'])
-    def _(path):
-        ...
+    tmp_reader(mock_npe2_pm, 'p1')
+    tmp_reader(mock_npe2_pm, 'p2')
 
     with pytest.raises(
         MultipleReaderError, match='Multiple plugins found capable'
@@ -858,7 +805,7 @@ def test_open_or_get_error_multiple_readers(tmp_plugin: DynamicPlugin):
         viewer._open_or_raise_error(['my_file.fake'])
 
 
-def test_open_or_get_error_no_plugin():
+def test_open_or_get_error_no_plugin(mock_npe2_pm):
     """Assert error is raised when no plugin is available."""
     viewer = ViewerModel()
 
@@ -868,7 +815,7 @@ def test_open_or_get_error_no_plugin():
         viewer._open_or_raise_error(['my_file.fake'])
 
 
-def test_open_or_get_error_builtins(builtins: DynamicPlugin, tmp_path):
+def test_open_or_get_error_builtins(mock_npe2_pm, tmp_path):
     """Test builtins is available to read npy files."""
     viewer = ViewerModel()
 
@@ -881,94 +828,78 @@ def test_open_or_get_error_builtins(builtins: DynamicPlugin, tmp_path):
     layer = added[0]
     assert isinstance(layer, Image)
     np.testing.assert_allclose(layer.data, data)
-    assert layer.source.reader_plugin == builtins.name
+    assert layer.source.reader_plugin == 'builtins'
 
 
-def test_open_or_get_error_prefered_plugin(
-    tmp_path, builtins: DynamicPlugin, tmp_plugin: DynamicPlugin
-):
+def test_open_or_get_error_prefered_plugin(mock_npe2_pm, tmp_reader, tmp_path):
     """Test plugin preference is respected."""
     viewer = ViewerModel()
     pth = tmp_path / 'my-file.npy'
     np.save(pth, np.random.random((10, 10)))
 
-    @tmp_plugin.contribute.reader(filename_patterns=['*.npy'])
-    def _(path):
-        ...
+    with restore_settings_on_exit():
+        get_settings().plugins.extension2reader = {'*.npy': 'builtins'}
 
-    get_settings().plugins.extension2reader = {'*.npy': builtins.name}
+        tmp_reader(mock_npe2_pm, 'fake-reader', filename_patterns=['*.npy'])
+        tmp_reader(
+            mock_npe2_pm, 'other-fake-reader', filename_patterns=['*.npy']
+        )
 
-    added = viewer._open_or_raise_error([str(pth)])
-    assert len(added) == 1
-    assert added[0].source.reader_plugin == builtins.name
+        added = viewer._open_or_raise_error([str(pth)])
+        assert len(added) == 1
+        assert added[0].source.reader_plugin == 'builtins'
 
 
-def test_open_or_get_error_cant_find_plugin(tmp_path, builtins: DynamicPlugin):
+def test_open_or_get_error_cant_find_plugin(
+    tmp_path, mock_npe2_pm, tmp_reader
+):
     """Test user is warned and only plugin used if preferred plugin missing."""
     viewer = ViewerModel()
     pth = tmp_path / 'my-file.npy'
     np.save(pth, np.random.random((10, 10)))
 
-    get_settings().plugins.extension2reader = {'*.npy': 'fake-reader'}
+    with restore_settings_on_exit():
+        get_settings().plugins.extension2reader = {'*.npy': 'fake-reader'}
 
-    with pytest.warns(RuntimeWarning, match="Can't find fake-reader plugin"):
-        added = viewer._open_or_raise_error([str(pth)])
-    assert len(added) == 1
-    assert added[0].source.reader_plugin == builtins.name
+        with pytest.warns(
+            RuntimeWarning, match="Can't find fake-reader plugin"
+        ):
+            added = viewer._open_or_raise_error([str(pth)])
+        assert len(added) == 1
+        assert added[0].source.reader_plugin == 'builtins'
 
 
 def test_open_or_get_error_no_prefered_plugin_many_available(
-    tmp_plugin: DynamicPlugin,
+    mock_npe2_pm, tmp_reader
 ):
     """Test MultipleReaderError raised if preferred plugin missing."""
     viewer = ViewerModel()
-    tmp2 = tmp_plugin.spawn(register=True)
 
-    @tmp_plugin.contribute.reader(filename_patterns=['*.fake'])
-    def _(path):
-        ...
+    with restore_settings_on_exit():
+        get_settings().plugins.extension2reader = {'*.fake': 'not-a-plugin'}
 
-    @tmp2.contribute.reader(filename_patterns=['*.fake'])
-    def _(path):
-        ...
+        tmp_reader(mock_npe2_pm, 'fake-reader', filename_patterns=['*.fake'])
+        tmp_reader(
+            mock_npe2_pm, 'other-fake-reader', filename_patterns=['*.fake']
+        )
 
-    get_settings().plugins.extension2reader = {'*.fake': 'not-a-plugin'}
-
-    with pytest.warns(RuntimeWarning, match="Can't find not-a-plugin plugin"):
-        with pytest.raises(
-            MultipleReaderError, match='Multiple plugins found capable'
+        with pytest.warns(
+            RuntimeWarning, match="Can't find not-a-plugin plugin"
         ):
-            viewer._open_or_raise_error(['my_file.fake'])
+            with pytest.raises(
+                MultipleReaderError, match='Multiple plugins found capable'
+            ):
+                viewer._open_or_raise_error(['my_file.fake'])
 
 
-def test_open_or_get_error_preferred_fails(builtins, tmp_path):
+def test_open_or_get_error_preferred_fails(tmp_path):
     viewer = ViewerModel()
     pth = tmp_path / 'my-file.npy'
 
-    get_settings().plugins.extension2reader = {'*.npy': builtins.name}
+    with restore_settings_on_exit():
+        get_settings().plugins.extension2reader = {'*.npy': 'napari'}
 
-    with pytest.raises(
-        ReaderPluginError, match='Tried opening with napari, but failed.'
-    ):
-        viewer._open_or_raise_error([str(pth)])
-
-
-def test_slice_order_with_mixed_dims():
-    viewer = ViewerModel(ndisplay=2)
-    image_2d = viewer.add_image(np.zeros((4, 5)))
-    image_3d = viewer.add_image(np.zeros((3, 4, 5)))
-    image_4d = viewer.add_image(np.zeros((2, 3, 4, 5)))
-
-    # With standard ordering, the shapes of the slices match,
-    # so are trivially numpy-broadcastable.
-    assert image_2d._slice.image.view.shape == (4, 5)
-    assert image_3d._slice.image.view.shape == (4, 5)
-    assert image_4d._slice.image.view.shape == (4, 5)
-
-    viewer.dims.order = (2, 1, 0, 3)
-
-    # With non-standard ordering, the shapes of the slices do not match,
-    # and are not numpy-broadcastable.
-    assert image_2d._slice.image.view.shape == (4, 5)
-    assert image_3d._slice.image.view.shape == (3, 5)
-    assert image_4d._slice.image.view.shape == (2, 5)
+        with pytest.raises(
+            ReaderPluginError, match='Tried opening with napari, but failed.'
+        ):
+            viewer._open_or_raise_error([str(pth)])

@@ -49,9 +49,10 @@ class Mesh:
         edges
     """
 
-    _types = ('face', 'edge')
+    _types = ['face', 'edge']
 
-    def __init__(self, ndisplay=2) -> None:
+    def __init__(self, ndisplay=2):
+
         self._ndisplay = ndisplay
         self.clear()
 

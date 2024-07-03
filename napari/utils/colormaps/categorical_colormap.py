@@ -1,16 +1,13 @@
 from typing import Any, Dict, Union
 
 import numpy as np
+from pydantic import validator
 
-from napari._pydantic_compat import Field
-from napari.utils.color import ColorValue
-from napari.utils.colormaps.categorical_colormap_utils import (
-    ColorCycle,
-    compare_colormap_dicts,
-)
-from napari.utils.colormaps.standardize_color import transform_color
-from napari.utils.events import EventedModel
-from napari.utils.translations import trans
+from ...utils.events import EventedModel
+from ...utils.events.custom_types import Array
+from ..translations import trans
+from .categorical_colormap_utils import ColorCycle, compare_colormap_dicts
+from .standardize_color import transform_color
 
 
 class CategoricalColormap(EventedModel):
@@ -28,10 +25,12 @@ class CategoricalColormap(EventedModel):
         The default value is a cycle of all white.
     """
 
-    colormap: Dict[Any, ColorValue] = Field(default_factory=dict)
-    fallback_color: ColorCycle = Field(
-        default_factory=lambda: ColorCycle.validate_type('white')
-    )
+    colormap: Dict[Any, Array[np.float32, (4,)]] = {}
+    fallback_color: ColorCycle = ColorCycle.validate_type('white')
+
+    @validator('colormap', pre=True)
+    def _standardize_colormap(cls, v):
+        return {k: transform_color(v)[0] for k, v in v.items()}
 
     def map(self, color_properties: Union[list, np.ndarray]) -> np.ndarray:
         """Map an array of values to an array of colors
@@ -60,7 +59,7 @@ class CategoricalColormap(EventedModel):
             ]
             for prop in props_to_add:
                 new_color = next(self.fallback_color.cycle)
-                self.colormap[prop] = ColorValue(new_color)
+                self.colormap[prop] = np.squeeze(transform_color(new_color))
         # map the colors
         colors = np.array([self.colormap[x] for x in color_properties])
         return colors
@@ -79,7 +78,10 @@ class CategoricalColormap(EventedModel):
                 }
             else:
                 colormap = {}
-            fallback_color = params.get("fallback_color", "white")
+            if 'fallback_color' in params:
+                fallback_color = params['fallback_color']
+            else:
+                fallback_color = 'white'
         else:
             colormap = {k: transform_color(v)[0] for k, v in params.items()}
             fallback_color = 'white'
@@ -94,17 +96,17 @@ class CategoricalColormap(EventedModel):
     def validate_type(cls, val):
         if isinstance(val, cls):
             return val
-        if isinstance(val, (list, np.ndarray)):
+        if isinstance(val, list) or isinstance(val, np.ndarray):
             return cls.from_array(val)
-        if isinstance(val, dict):
+        elif isinstance(val, dict):
             return cls.from_dict(val)
-
-        raise TypeError(
-            trans._(
-                'colormap should be an array or dict',
-                deferred=True,
+        else:
+            raise TypeError(
+                trans._(
+                    'colormap should be an array or dict',
+                    deferred=True,
+                )
             )
-        )
 
     def __eq__(self, other):
         if isinstance(other, CategoricalColormap):
@@ -115,5 +117,5 @@ class CategoricalColormap(EventedModel):
             ):
                 return False
             return True
-
-        return False
+        else:
+            return False

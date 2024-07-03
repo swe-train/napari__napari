@@ -1,5 +1,5 @@
 import os
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 
 from qtpy.QtWidgets import (
     QButtonGroup,
@@ -15,7 +15,8 @@ from qtpy.QtWidgets import (
 from napari.errors import ReaderPluginError
 from napari.plugins.utils import get_potential_readers
 from napari.settings import get_settings
-from napari.utils.translations import trans
+
+from ...utils.translations import trans
 
 
 class QtReaderDialog(QDialog):
@@ -25,38 +26,22 @@ class QtReaderDialog(QDialog):
         self,
         pth: str = '',
         parent: QWidget = None,
-        readers: Optional[Dict[str, str]] = None,
+        readers: Dict[str, str] = {},
         error_message: str = '',
-        persist_checked: bool = True,
-    ) -> None:
-        if readers is None:
-            readers = {}
+    ):
         super().__init__(parent)
         self.setObjectName('Choose reader')
         self.setWindowTitle(trans._('Choose reader'))
         self._current_file = pth
 
+        if os.path.isdir(pth) and str(pth).endswith('/'):
+            pth = os.path.dirname(pth)
         self._extension = os.path.splitext(pth)[1]
-        self._persist_text = trans._(
-            'Remember this choice for files with a {extension} extension',
-            extension=self._extension,
-        )
-
-        if os.path.isdir(pth):
-            self._extension = os.path.realpath(pth)
-            if not self._extension.endswith(
-                '.zarr'
-            ) and not self._extension.endswith(os.sep):
-                self._extension = self._extension + os.sep
-                self._persist_text = trans._(
-                    'Remember this choice for folders labeled as {extension}.',
-                    extension=self._extension,
-                )
 
         self._reader_buttons = []
-        self.setup_ui(error_message, readers, persist_checked)
+        self.setup_ui(error_message, readers)
 
-    def setup_ui(self, error_message, readers, persist_checked):
+    def setup_ui(self, error_message, readers):
         """Build UI using given error_messsage and readers dict"""
 
         # add instruction label
@@ -80,37 +65,13 @@ class QtReaderDialog(QDialog):
         self.btn_box.accepted.connect(self.accept)
         self.btn_box.rejected.connect(self.reject)
 
-        # checkbox to remember the choice
-        if os.path.isdir(self._current_file):
-            existing_pref = get_settings().plugins.extension2reader.get(
-                self._extension
+        # checkbox to remember the choice (doesn't pop up for folders with no extension)
+        if self._extension:
+            self.persist_checkbox = QCheckBox(
+                f'Remember this choice for files with a {self._extension} extension'
             )
-            isdir = True
-        else:
-            existing_pref = get_settings().plugins.extension2reader.get(
-                '*' + self._extension
-            )
-            isdir = False
-
-        if existing_pref:
-            if isdir:
-                self._persist_text = trans._(
-                    'Override existing preference for folders labeled as {extension}: {pref}',
-                    extension=self._extension,
-                    pref=existing_pref,
-                )
-
-            else:
-                self._persist_text = trans._(
-                    'Override existing preference for files with a {extension} extension: {pref}',
-                    extension=self._extension,
-                    pref=existing_pref,
-                )
-
-        self.persist_checkbox = QCheckBox(self._persist_text)
-        self.persist_checkbox.toggle()
-        self.persist_checkbox.setChecked(persist_checked)
-        layout.addWidget(self.persist_checkbox)
+            self.persist_checkbox.toggle()
+            layout.addWidget(self.persist_checkbox)
 
         layout.addWidget(self.btn_box)
         self.setLayout(layout)
@@ -127,7 +88,6 @@ class QtReaderDialog(QDialog):
         checked_btn = self.reader_btn_group.checkedButton()
         if checked_btn:
             return checked_btn.text()
-        return None
 
     def _get_persist_choice(self):
         """Get persistence checkbox choice"""
@@ -154,10 +114,9 @@ class QtReaderDialog(QDialog):
 def handle_gui_reading(
     paths: List[str],
     qt_viewer,
-    stack: Union[bool, List[List[str]]],
+    stack: bool,
     plugin_name: Optional[str] = None,
     error: Optional[ReaderPluginError] = None,
-    plugin_override: bool = False,
     **kwargs,
 ):
     """Present reader dialog to choose reader and open paths based on result.
@@ -171,30 +130,26 @@ def handle_gui_reading(
 
     Parameters
     ----------
-    paths : list[str]
+    _paths : list[str]
         list of paths to open, as strings
-    qt_viewer : QtViewer
+    viewer : QtViewer
         QtViewer to associate dialog with
-    stack : bool or list[list[str]]
-        True if list of paths should be stacked, otherwise False.
-        Can also be a list containing lists of files to stack
+    stack : bool
+        True if list of paths should be stacked, otherwise False
     plugin_name : str | None
         name of plugin already tried, if any
     error : ReaderPluginError | None
         previous error raised in the process of opening
-    plugin_override : bool
-        True when user is forcing a plugin choice, otherwise False.
-        Dictates whether checkbox to remember choice is unchecked by default
     """
     _path = paths[0]
     readers = prepare_remaining_readers(paths, plugin_name, error)
     error_message = str(error) if error else ''
+
     readerDialog = QtReaderDialog(
         parent=qt_viewer,
         pth=_path,
         error_message=error_message,
         readers=readers,
-        persist_checked=not plugin_override,
     )
     display_name, persist = readerDialog.get_user_choices()
     if display_name:
@@ -279,7 +234,7 @@ def open_with_dialog_choices(
         file extension for association of preferences
     readers : Dict[str, str]
         plugin-name: display-name dictionary of remaining readers
-    paths : List[str]
+    _paths : List[str]
         paths to open
     stack : bool
         True if files should be opened as a stack, otherwise False
@@ -287,16 +242,14 @@ def open_with_dialog_choices(
         viewer to add layers to
     """
     # TODO: disambiguate with reader title
-    plugin_name = next(
+    plugin_name = [
         p_name for p_name, d_name in readers.items() if d_name == display_name
-    )
+    ][0]
     # may throw error, but we let it this time
     qt_viewer.viewer.open(paths, stack=stack, plugin=plugin_name, **kwargs)
 
     if persist:
-        if not extension.endswith(os.sep):
-            extension = '*' + extension
         get_settings().plugins.extension2reader = {
             **get_settings().plugins.extension2reader,
-            extension: plugin_name,
+            f'*{extension}': plugin_name,
         }

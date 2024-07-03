@@ -2,16 +2,20 @@
 # https://asv.readthedocs.io/en/latest/writing_benchmarks.html
 # or the napari documentation on benchmarking
 # https://github.com/napari/napari/blob/main/docs/BENCHMARKS.md
-import os
+import collections
 
 import numpy as np
 
 from napari.layers import Shapes
-from napari.utils._test_utils import read_only_mouse_event
+from napari.utils._proxies import ReadOnlyWrapper
 from napari.utils.interactions import (
     mouse_move_callbacks,
     mouse_press_callbacks,
     mouse_release_callbacks,
+)
+
+Event = collections.namedtuple(
+    'Event', field_names=['type', 'is_dragging', 'modifiers', 'position']
 )
 
 
@@ -19,9 +23,6 @@ class Shapes2DSuite:
     """Benchmarks for the Shapes layer with 2D data"""
 
     params = [2**i for i in range(4, 9)]
-
-    if "PR" in os.environ:
-        skip_params = [(2**i,) for i in range(6, 9)]
 
     def setup(self, n):
         np.random.seed(0)
@@ -61,8 +62,6 @@ class Shapes3DSuite:
     """Benchmarks for the Shapes layer with 3D data."""
 
     params = [2**i for i in range(4, 9)]
-    if "PR" in os.environ:
-        skip_params = [(2**i,) for i in range(6, 9)]
 
     def setup(self, n):
         np.random.seed(0)
@@ -113,20 +112,24 @@ class ShapesInteractionSuite:
         position = tuple(np.mean(self.layer.data[0], axis=0))
 
         # create events
-        click_event = read_only_mouse_event(
-            type='mouse_press',
-            is_dragging=False,
-            modifiers=[],
-            position=position,
+        click_event = ReadOnlyWrapper(
+            Event(
+                type='mouse_press',
+                is_dragging=False,
+                modifiers=[],
+                position=position,
+            )
         )
         # Simulate click
         mouse_press_callbacks(self.layer, click_event)
 
-        release_event = read_only_mouse_event(
-            type='mouse_release',
-            is_dragging=False,
-            modifiers=[],
-            position=position,
+        release_event = ReadOnlyWrapper(
+            Event(
+                type='mouse_release',
+                is_dragging=False,
+                modifiers=[],
+                position=position,
+            )
         )
 
         # Simulate release
@@ -138,22 +141,26 @@ class ShapesInteractionSuite:
         position = tuple(np.mean(self.layer.data[0], axis=0))
 
         # create events
-        click_event = read_only_mouse_event(
-            type='mouse_press',
-            is_dragging=False,
-            modifiers=[],
-            position=position,
+        click_event = ReadOnlyWrapper(
+            Event(
+                type='mouse_press',
+                is_dragging=False,
+                modifiers=[],
+                position=position,
+            )
         )
 
         # Simulate click
         mouse_press_callbacks(self.layer, click_event)
 
         # create events
-        drag_event = read_only_mouse_event(
-            type='mouse_press',
-            is_dragging=True,
-            modifiers=[],
-            position=position,
+        drag_event = ReadOnlyWrapper(
+            Event(
+                type='mouse_press',
+                is_dragging=True,
+                modifiers=[],
+                position=position,
+            )
         )
 
         # start drag event
@@ -162,21 +169,25 @@ class ShapesInteractionSuite:
         # simulate 5 drag events
         for _ in range(5):
             position = tuple(np.add(position, [10, 5]))
-            drag_event = read_only_mouse_event(
-                type='mouse_press',
-                is_dragging=True,
-                modifiers=[],
-                position=position,
+            drag_event = ReadOnlyWrapper(
+                Event(
+                    type='mouse_press',
+                    is_dragging=True,
+                    modifiers=[],
+                    position=position,
+                )
             )
 
             # Simulate move, click, and release
             mouse_move_callbacks(self.layer, drag_event)
 
-        release_event = read_only_mouse_event(
-            type='mouse_release',
-            is_dragging=False,
-            modifiers=[],
-            position=position,
+        release_event = ReadOnlyWrapper(
+            Event(
+                type='mouse_release',
+                is_dragging=False,
+                modifiers=[],
+                position=position,
+            )
         )
 
         # Simulate release
@@ -189,20 +200,24 @@ class ShapesInteractionSuite:
         position = tuple(np.mean(self.layer.data[1], axis=0))
 
         # create events
-        click_event = read_only_mouse_event(
-            type='mouse_press',
-            is_dragging=False,
-            modifiers=[],
-            position=position,
+        click_event = ReadOnlyWrapper(
+            Event(
+                type='mouse_press',
+                is_dragging=False,
+                modifiers=[],
+                position=position,
+            )
         )
         # Simulate click
         mouse_press_callbacks(self.layer, click_event)
 
-        release_event = read_only_mouse_event(
-            type='mouse_release',
-            is_dragging=False,
-            modifiers=[],
-            position=position,
+        release_event = ReadOnlyWrapper(
+            Event(
+                type='mouse_release',
+                is_dragging=False,
+                modifiers=[],
+                position=position,
+            )
         )
 
         # Simulate release

@@ -1,9 +1,7 @@
 import numpy as np
-import pytest
 
 from napari._tests.utils import skip_on_win_ci
 from napari._vispy.layers.image import VispyImageLayer
-from napari.components.dims import Dims
 from napari.layers.image import Image
 
 
@@ -15,17 +13,12 @@ def test_image_rendering(make_napari_viewer):
 
     data = np.random.random((20, 20, 20))
     layer = viewer.add_image(data)
-    vispy_layer = viewer.window._qt_viewer.layer_to_visual[layer]
 
     assert layer.rendering == 'mip'
 
     # Change the interpolation property
-    with pytest.deprecated_call():
-        layer.interpolation = 'linear'
-    assert layer.interpolation2d == 'nearest'
-    with pytest.deprecated_call():
-        assert layer.interpolation == 'linear'
-    assert layer.interpolation3d == 'linear'
+    layer.interpolation = 'linear'
+    assert layer.interpolation == 'linear'
 
     # Change rendering property
     layer.rendering = 'translucent'
@@ -47,16 +40,9 @@ def test_image_rendering(make_napari_viewer):
     layer.rendering = 'additive'
     assert layer.rendering == 'additive'
 
-    # check custom interpolation works on the 2D node
-    with pytest.raises(NotImplementedError):
-        layer.interpolation3d = 'custom'
-    viewer.dims.ndisplay = 2
-    layer.interpolation2d = 'custom'
-    assert vispy_layer.node.interpolation == 'custom'
-
 
 @skip_on_win_ci
-def test_visibility_consistency(qapp, make_napari_viewer):
+def test_visibility_consistency(qtbot, make_napari_viewer):
     """Make sure toggling visibility maintains image contrast.
 
     see #1622 for details.
@@ -66,7 +52,7 @@ def test_visibility_consistency(qapp, make_napari_viewer):
     layer = viewer.add_image(
         np.random.random((200, 200)), contrast_limits=[0, 10]
     )
-    qapp.processEvents()
+    qtbot.wait(10)
     layer.contrast_limits = (0, 2)
     screen1 = viewer.screenshot(flash=False).astype('float')
     layer.visible = True
@@ -89,6 +75,7 @@ def test_clipping_planes_dims():
     vispy_layer = VispyImageLayer(image_layer)
     napari_clip = image_layer.experimental_clipping_planes.as_array()
     # needed to get volume node
-    image_layer._slice_dims(Dims(ndim=3, ndisplay=3))
+    image_layer._ndisplay = 3
+    vispy_layer._on_display_change()
     vispy_clip = vispy_layer.node.clipping_planes
-    np.testing.assert_array_equal(napari_clip, vispy_clip[..., ::-1])
+    assert np.all(napari_clip == vispy_clip[..., ::-1])

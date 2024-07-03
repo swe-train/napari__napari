@@ -1,4 +1,4 @@
-from napari.utils.events import EventedModel
+from ..utils.events import EventedModel
 
 
 class Tooltip(EventedModel):

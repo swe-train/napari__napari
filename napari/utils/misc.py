@@ -1,9 +1,7 @@
 """Miscellaneous utility functions.
 """
-
 import builtins
 import collections.abc
-import contextlib
 import importlib.metadata
 import inspect
 import itertools
@@ -12,19 +10,16 @@ import re
 import sys
 import warnings
 from enum import Enum, EnumMeta
-from os import fspath, path as os_path
+from os import fspath
+from os import path as os_path
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Dict,
     Iterable,
     Iterator,
-    List,
     Optional,
-    Sequence,
-    Tuple,
     Type,
     TypeVar,
     Union,
@@ -32,7 +27,7 @@ from typing import (
 
 import numpy as np
 
-from napari.utils.translations import trans
+from ..utils.translations import trans
 
 if TYPE_CHECKING:
     import packaging.version
@@ -48,36 +43,21 @@ def parse_version(v) -> 'packaging.version._BaseVersion':
     try:
         return packaging.version.Version(v)
     except packaging.version.InvalidVersion:
-        return packaging.version.LegacyVersion(v)  # type: ignore[attr-defined]
+        return packaging.version.LegacyVersion(v)
 
 
-def running_as_bundled_app(*, check_conda=True) -> bool:
-    """Infer whether we are running as a bundle."""
+def running_as_bundled_app() -> bool:
+    """Infer whether we are running as a briefcase bundle."""
     # https://github.com/beeware/briefcase/issues/412
     # https://github.com/beeware/briefcase/pull/425
     # note that a module may not have a __package__ attribute
     # From 0.4.12 we add a sentinel file next to the bundled sys.executable
-    warnings.warn(
-        trans._(
-            "Briefcase installations are no longer supported as of v0.4.18. "
-            "running_as_bundled_app() will be removed in a 0.6.0 release.",
-        ),
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    if (
-        check_conda
-        and (Path(sys.executable).parent / ".napari_is_bundled").exists()
-    ):
+    if (Path(sys.executable).parent / ".napari_is_bundled").exists():
         return True
 
-    # TODO: Remove from here on?
     try:
         app_module = sys.modules['__main__'].__package__
     except AttributeError:
-        return False
-
-    if not app_module:
         return False
 
     try:
@@ -95,32 +75,32 @@ def running_as_constructor_app() -> bool:
     ).exists()
 
 
+def bundle_bin_dir() -> Optional[str]:
+    """Return path to briefcase app_packages/bin if it exists."""
+    bin = os_path.join(os_path.dirname(sys.exec_prefix), 'app_packages', 'bin')
+    if os_path.isdir(bin):
+        return bin
+
+
 def in_jupyter() -> bool:
     """Return true if we're running in jupyter notebook/lab or qtconsole."""
-    with contextlib.suppress(ImportError):
+    try:
         from IPython import get_ipython
 
         return get_ipython().__class__.__name__ == 'ZMQInteractiveShell'
+    except Exception:
+        pass
     return False
 
 
 def in_ipython() -> bool:
     """Return true if we're running in an IPython interactive shell."""
-    with contextlib.suppress(ImportError):
+    try:
         from IPython import get_ipython
 
         return get_ipython().__class__.__name__ == 'TerminalInteractiveShell'
-    return False
-
-
-def in_python_repl() -> bool:
-    """Return true if we're running in a Python REPL."""
-    with contextlib.suppress(ImportError):
-        from IPython import get_ipython
-
-        return get_ipython().__class__.__name__ == 'NoneType' and hasattr(
-            sys, 'ps1'
-        )
+    except Exception:
+        pass
     return False
 
 
@@ -138,8 +118,8 @@ def ensure_iterable(arg, color=False):
     """
     if is_iterable(arg, color=color):
         return arg
-
-    return itertools.repeat(arg)
+    else:
+        return itertools.repeat(arg)
 
 
 def is_iterable(arg, color=False, allow_none=False):
@@ -149,14 +129,17 @@ def is_iterable(arg, color=False, allow_none=False):
     """
     if arg is None and not allow_none:
         return False
-    if isinstance(arg, (str, Enum)):
+    elif type(arg) is str:
         return False
-    if np.isscalar(arg):
+    elif np.isscalar(arg):
         return False
-    if color and isinstance(arg, (list, np.ndarray)):
-        return np.array(arg).ndim != 1 or len(arg) not in [3, 4]
-
-    return True
+    elif color and isinstance(arg, (list, np.ndarray)):
+        if np.array(arg).ndim == 1 and (len(arg) == 3 or len(arg) == 4):
+            return False
+        else:
+            return True
+    else:
+        return True
 
 
 def is_sequence(arg):
@@ -231,18 +214,18 @@ def ensure_sequence_of_iterables(
         obj is not None
         and is_sequence(obj)
         and all(is_iterable(el, allow_none=allow_none) for el in obj)
-        and (not repeat_empty or len(obj) > 0)
     ):
         if length is not None and len(obj) != length:
-            # sequence of iterables of wrong length
-            raise ValueError(
-                trans._(
-                    "length of {obj} must equal {length}",
-                    deferred=True,
-                    obj=obj,
-                    length=length,
+            if (len(obj) == 0 and not repeat_empty) or len(obj) > 0:
+                # sequence of iterables of wrong length
+                raise ValueError(
+                    trans._(
+                        "length of {obj} must equal {length}",
+                        deferred=True,
+                        obj=obj,
+                        length=length,
+                    )
                 )
-            )
 
         if len(obj) > 0 or not repeat_empty:
             return obj
@@ -257,9 +240,9 @@ def formatdoc(obj):
         obj.__doc__ = obj.__doc__.format(
             **{**frame.f_globals, **frame.f_locals}
         )
+        return obj
     finally:
         del frame
-    return obj
 
 
 class StringEnumMeta(EnumMeta):
@@ -277,7 +260,7 @@ class StringEnumMeta(EnumMeta):
         *,
         module=None,
         qualname=None,
-        type=None,  # noqa: A002
+        type=None,
         start=1,
     ):
         """set the item value case to lowercase for value lookup"""
@@ -285,17 +268,17 @@ class StringEnumMeta(EnumMeta):
         if names is None:
             if isinstance(value, str):
                 return super().__call__(value.lower())
-            if isinstance(value, cls):
+            elif isinstance(value, cls):
                 return value
-
-            raise ValueError(
-                trans._(
-                    '{class_name} may only be called with a `str` or an instance of {class_name}. Got {dtype}',
-                    deferred=True,
-                    class_name=cls,
-                    dtype=builtins.type(value),
+            else:
+                raise ValueError(
+                    trans._(
+                        '{class_name} may only be called with a `str` or an instance of {class_name}. Got {dtype}',
+                        deferred=True,
+                        class_name=cls,
+                        dtype=builtins.type(value),
+                    )
                 )
-            )
 
         # otherwise create new Enum class
         return cls._create_(
@@ -307,28 +290,27 @@ class StringEnumMeta(EnumMeta):
             start=start,
         )
 
-    def keys(self) -> List[str]:
+    def keys(self):
         return list(map(str, self))
 
 
 class StringEnum(Enum, metaclass=StringEnumMeta):
-    @staticmethod
     def _generate_next_value_(name, start, count, last_values):
         """autonaming function assigns each value its own name as a value"""
         return name.lower()
 
-    def __str__(self) -> str:
+    def __str__(self):
         """String representation: The string method returns the lowercase
         string of the Enum name
         """
         return self.value
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other):
         if type(self) is type(other):
             return self is other
-        if isinstance(other, str):
+        elif isinstance(other, str):
             return str(self) == other
-        return False
+        return NotImplemented
 
     def __hash__(self):
         return hash(str(self))
@@ -379,12 +361,12 @@ def abspath_or_url(relpath: T, *, must_exist: bool = False) -> T:
         )
     OriginType = type(relpath)
 
-    relpath_str = fspath(relpath)
-    urlp = urlparse(relpath_str)
+    relpath = fspath(relpath)
+    urlp = urlparse(relpath)
     if urlp.scheme and urlp.netloc:
-        return OriginType(relpath_str)
+        return relpath
 
-    path = os_path.abspath(os_path.expanduser(relpath_str))
+    path = os_path.abspath(os_path.expanduser(relpath))
     if must_exist and not (urlp.scheme or urlp.netloc or os.path.exists(path)):
         raise ValueError(
             trans._(
@@ -456,26 +438,23 @@ def ensure_n_tuple(val, n, fill=0):
 
 
 def ensure_layer_data_tuple(val):
-    msg = trans._(
-        'Not a valid layer data tuple: {value!r}',
-        deferred=True,
-        value=val,
-    )
-    if not isinstance(val, tuple) and val:
-        raise TypeError(msg)
-    if len(val) > 1:
-        if not isinstance(val[1], dict):
-            raise TypeError(msg)
-        if len(val) > 2 and not isinstance(val[2], str):
-            raise TypeError(msg)
+    if not (isinstance(val, tuple) and (0 < len(val) <= 3)):
+        raise TypeError(
+            trans._(
+                'Not a valid layer data tuple: {value!r}',
+                deferred=True,
+                value=val,
+            )
+        )
     return val
 
 
-def ensure_list_of_layer_data_tuple(val) -> List[tuple]:
-    # allow empty list to be returned but do nothing in that case
-    if isinstance(val, list):
-        with contextlib.suppress(TypeError):
+def ensure_list_of_layer_data_tuple(val):
+    if isinstance(val, list) and len(val):
+        try:
             return [ensure_layer_data_tuple(v) for v in val]
+        except TypeError:
+            pass
     raise TypeError(
         trans._('Not a valid list of layer data tuples!', deferred=True)
     )
@@ -519,7 +498,7 @@ def pick_equality_operator(obj) -> Callable[[Any, Any], bool]:
 
     # yes, it's a little riskier, but we are checking namespaces instead of
     # actual `issubclass` here to avoid slow import times
-    _known_arrays: Dict[str, Callable[[Any, Any], bool]] = {
+    _known_arrays = {
         'numpy.ndarray': _quiet_array_equal,  # numpy.ndarray
         'dask.Array': operator.is_,  # dask.array.core.Array
         'dask.Delayed': operator.is_,  # dask.delayed.Delayed
@@ -593,7 +572,7 @@ def dir_hash(
         for fname in sorted(files):
             if fname.startswith(".") and ignore_hidden:
                 continue
-            _file_hash(_hash, Path(root) / fname, Path(path), include_paths)
+            _file_hash(_hash, Path(root) / fname, path, include_paths)
     return _hash.hexdigest()
 
 
@@ -710,63 +689,3 @@ def install_certifi_opener():
     https_handler = request.HTTPSHandler(context=context)
     opener = request.build_opener(https_handler)
     request.install_opener(opener)
-
-
-def reorder_after_dim_reduction(order: Sequence[int]) -> Tuple[int, ...]:
-    """Ensure current dimension order is preserved after dims are dropped.
-
-    This is similar to :func:`scipy.stats.rankdata`, but only deals with
-    unique integers (like dimension indices), so is simpler and faster.
-
-    Parameters
-    ----------
-    order : Sequence[int]
-        The data to reorder.
-
-    Returns
-    -------
-    Tuple[int, ...]
-        A permutation of ``range(len(order))`` that is consistent with the input order.
-
-    Examples
-    --------
-    >>> reorder_after_dim_reduction([2, 0])
-    (1, 0)
-
-    >>> reorder_after_dim_reduction([0, 1, 2])
-    (0, 1, 2)
-
-    >>> reorder_after_dim_reduction([4, 0, 2])
-    (2, 0, 1)
-    """
-    # A single argsort works for strictly increasing/decreasing orders,
-    # but not for arbitrary orders.
-    return tuple(argsort(argsort(order)))
-
-
-def argsort(values: Sequence[int]) -> List[int]:
-    """Equivalent to :func:`numpy.argsort` but faster in some cases.
-
-    Parameters
-    ----------
-    values : Sequence[int]
-        The integer values to sort.
-
-    Returns
-    -------
-    List[int]
-        The indices that when used to index the input values will produce
-        the values sorted in increasing order.
-
-    Examples
-    --------
-    >>> argsort([2, 0])
-    [1, 0]
-
-    >>> argsort([0, 1, 2])
-    [0, 1, 2]
-
-    >>> argsort([4, 0, 2])
-    [1, 2, 0]
-    """
-    return sorted(range(len(values)), key=values.__getitem__)

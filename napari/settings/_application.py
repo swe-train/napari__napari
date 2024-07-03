@@ -2,43 +2,22 @@ from __future__ import annotations
 
 from typing import List, Optional, Tuple
 
-from psutil import virtual_memory
+from pydantic import Field, validator
 
-from napari._pydantic_compat import Field, validator
-from napari.settings._constants import BrushSizeOnMouseModifiers, LoopMode
-from napari.settings._fields import Language
-from napari.utils._base import _DEFAULT_LOCALE
-from napari.utils.events.custom_types import conint
-from napari.utils.events.evented_model import EventedModel
-from napari.utils.notifications import NotificationSeverity
-from napari.utils.translations import trans
+from ..utils._base import _DEFAULT_LOCALE
+from ..utils.events.custom_types import conint
+from ..utils.events.evented_model import EventedModel
+from ..utils.notifications import NotificationSeverity
+from ..utils.translations import trans
+from ._constants import LoopMode
+from ._fields import Language
 
 GridStride = conint(ge=-50, le=50, ne=0)
 GridWidth = conint(ge=-1, ne=0)
 GridHeight = conint(ge=-1, ne=0)
 
-_DEFAULT_MEM_FRACTION = 0.25
-MAX_CACHE = virtual_memory().total * 0.5 / 1e9
-
-
-class DaskSettings(EventedModel):
-    enabled: bool = True
-    cache: float = Field(
-        virtual_memory().total * _DEFAULT_MEM_FRACTION / 1e9,
-        ge=0,
-        le=MAX_CACHE,
-        title="Cache size (GB)",
-    )
-
 
 class ApplicationSettings(EventedModel):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.dask.events.connect(self._dask_changed)
-
-    def _dask_changed(self):
-        self.events.dask(value=self.dask)
-
     first_time: bool = Field(
         True,
         title=trans._('First time'),
@@ -54,7 +33,7 @@ class ApplicationSettings(EventedModel):
         ),
     )
     language: Language = Field(
-        Language(_DEFAULT_LOCALE),
+        _DEFAULT_LOCALE,
         title=trans._("Language"),
         description=trans._(
             "Select the display language for the user interface."
@@ -176,39 +155,8 @@ class ApplicationSettings(EventedModel):
         title=trans._("Grid Height"),
         description=trans._("Number of rows in the grid."),
     )
-    confirm_close_window: bool = Field(
-        default=True,
-        title=trans._("Confirm window or application closing"),
-        description=trans._(
-            "Ask for confirmation before closing a napari window or application (all napari windows).",
-        ),
-    )
-    hold_button_delay: float = Field(
-        default=0.5,
-        title=trans._("Delay to treat button as hold in seconds"),
-        description=trans._(
-            "This affects certain actions where a short press and a long press have different behaviors, such as changing the mode of a layer permanently or only during the long press."
-        ),
-    )
 
-    brush_size_on_mouse_move_modifiers: BrushSizeOnMouseModifiers = Field(
-        BrushSizeOnMouseModifiers.ALT,
-        title=trans._("Brush size on mouse move modifiers"),
-        description=trans._(
-            "Modifiers to activate changing the brush size by moving the mouse."
-        ),
-    )
-
-    # convert cache (and max cache) from bytes to mb for widget
-    dask: DaskSettings = Field(
-        default=DaskSettings(),
-        title=trans._("Dask cache"),
-        description=trans._(
-            "Settings for dask cache (does not work with distributed arrays)"
-        ),
-    )
-
-    @validator('window_state', allow_reuse=True)
+    @validator('window_state')
     def _validate_qbtye(cls, v):
         if v and (not isinstance(v, str) or not v.startswith('!QBYTE_')):
             raise ValueError(
@@ -221,7 +169,7 @@ class ApplicationSettings(EventedModel):
 
     class NapariConfig:
         # Napari specific configuration
-        preferences_exclude = (
+        preferences_exclude = [
             "schema_version",
             "preferences_size",
             "first_time",
@@ -234,4 +182,4 @@ class ApplicationSettings(EventedModel):
             "open_history",
             "save_history",
             "ipy_interactive",
-        )
+        ]

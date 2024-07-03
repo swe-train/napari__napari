@@ -2,17 +2,15 @@
 Custom mouse functions
 ======================
 
-Display one 4-D image layer using the ``add_image`` API
-
-.. tags:: gui
+Display one 4-D image layer using the add_image API
 """
 
-import numpy as np
-from scipy import ndimage as ndi
 from skimage import data
 from skimage.morphology import binary_dilation, binary_erosion
-
+from scipy import ndimage as ndi
+import numpy as np
 import napari
+
 
 np.random.seed(1)
 viewer = napari.Viewer()

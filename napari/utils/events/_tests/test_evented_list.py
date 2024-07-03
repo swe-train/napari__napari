@@ -219,8 +219,7 @@ def test_move_multiple_mimics_slice_reorder():
 
     # move_multiple also works omitting the insertion index
     el[:] = list(range(8))
-    el.move_multiple(new_order)
-    assert el == new_order
+    el.move_multiple(new_order) == [el[i] for i in new_order]
 
 
 def test_slice(test_list, regular_list):
@@ -257,14 +256,6 @@ def test_nested_indexing():
     indices = [tuple(int(x) for x in str(n)) for n in flatten(NEST)]
     for index in indices:
         assert ne_list[index] == int("".join(map(str, index)))
-
-    assert ne_list.has_index(1)
-    assert ne_list.has_index((1,))
-    assert ne_list.has_index((1, 2))
-    assert ne_list.has_index((1, 1, 2))
-    assert not ne_list.has_index((1, 1, 3))
-    assert not ne_list.has_index((1, 1, 2, 3, 4))
-    assert not ne_list.has_index(100)
 
 
 # indices in NEST that are themselves lists
@@ -315,9 +306,8 @@ def test_nested_events(meth, group_index):
 
     method_name, args, expected_events = meth
     method = getattr(ne_list[group_index], method_name)
-    if method_name == 'index' and group_index == (1, 1, 1):
-        # the expected value of '110' (in the pytest parameters)
-        # is not present in any child of ne_list[1, 1, 1]
+    if method_name == 'index' and group_index != (1, 1):
+        # the expected value only occurs in index (1, 1)
         with pytest.raises(ValueError):
             method(*args)
     else:
@@ -377,7 +367,7 @@ def test_nested_move_multiple(sources, dest, expectation):
 
 
 class E:
-    def __init__(self) -> None:
+    def __init__(self):
         self.events = EmitterGroup(test=None)
 
 

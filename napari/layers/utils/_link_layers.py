@@ -7,18 +7,16 @@ from typing import TYPE_CHECKING, Callable, DefaultDict, Iterable, Set, Tuple
 from weakref import ReferenceType, ref
 
 if TYPE_CHECKING:
-    from collections import abc
-
     from napari.layers import Layer
 
-from napari.utils.events.event import WarningEmitter
-from napari.utils.translations import trans
+from ...utils.events.event import WarningEmitter
+from ...utils.translations import trans
 
 #: Record of already linked layers... to avoid duplicating callbacks
 #  in the form of {(id(layer1), id(layer2), attribute_name) -> callback}
 LinkKey = Tuple['ReferenceType[Layer]', 'ReferenceType[Layer]', str]
 Unlinker = Callable[[], None]
-_UNLINKERS: dict[LinkKey, Unlinker] = {}
+_UNLINKERS: dict[LinkKey, Unlinker] = dict()
 _LINKED_LAYERS: DefaultDict[
     ReferenceType[Layer], Set[ReferenceType[Layer]]
 ] = DefaultDict(set)
@@ -37,10 +35,9 @@ def get_linked_layers(*layers: Layer) -> Set[Layer]:
     directly linked to each other.  This is useful for context menu generation.
     """
     if not layers:
-        return set()
+        return {}
     refs = set.union(*(_LINKED_LAYERS.get(ref(x), set()) for x in layers))
-    linked_layers = {x() for x in refs}
-    return {x for x in linked_layers if x is not None}
+    return {x() for x in refs if x() is not None}
 
 
 def link_layers(
@@ -87,7 +84,7 @@ def link_layers(
     >>> link_layers(viewer.layers)  # doctest: +SKIP
     """
 
-    from napari.utils.misc import pick_equality_operator
+    from ...utils.misc import pick_equality_operator
 
     valid_attrs = _get_common_evented_attributes(layers)
 
@@ -111,6 +108,7 @@ def link_layers(
     # now, connect requested attributes between all requested layers.
     links = []
     for (lay1, lay2), attribute in product(permutations(layers, 2), attr_set):
+
         key = _link_key(lay1, lay2, attribute)
         # if the layers and attribute are already linked then ignore
         if key in _UNLINKERS:
@@ -130,7 +128,7 @@ def link_layers(
             setter.__qualname__ = f"set_{attr}_on_layer_{id(l2)}"
             return setter
 
-        # actually make the connection
+        # acually make the connection
         callback = _make_l2_setter()
         emitter_group = getattr(lay1.events, attribute)
         emitter_group.connect(callback)
@@ -190,9 +188,7 @@ def layers_linked(layers: Iterable[Layer], attributes: Iterable[str] = ()):
 
 def _get_common_evented_attributes(
     layers: Iterable[Layer],
-    exclude: abc.Set[str] = frozenset(
-        ('thumbnail', 'status', 'name', 'data', 'extent', 'loaded')
-    ),
+    exclude: set[str] = {'thumbnail', 'status', 'name', 'data'},
     with_private=False,
 ) -> set[str]:
     """Get the set of common, non-private evented attributes in ``layers``.
@@ -226,7 +222,7 @@ def _get_common_evented_attributes(
                 "``layers`` iterable must have at least one layer",
                 deferred=True,
             )
-        ) from None
+        )
 
     layer_events = [
         {
@@ -268,6 +264,6 @@ def _unlink_keys(keys: Iterable[LinkKey]):
 
 def _rebuild_link_index():
     links = DefaultDict(set)
-    for l1, l2, _attr in _UNLINKERS:
+    for l1, l2, attr in _UNLINKERS:
         links[l1].add(l2)
     return links

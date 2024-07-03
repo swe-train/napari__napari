@@ -1,9 +1,9 @@
 """ExperimentalNamespace and CommandProcessor classes.
 """
+from .chunk._commands._utils import highlight
 
-HELP_STR = """
-Available Commands
-------------------
+HELP_STR = f"""
+{highlight("Available Commands:")}
 experimental.cmds.loader
 """
 
@@ -19,15 +19,13 @@ class CommandProcessor:
         The viewer's layers.
     """
 
-    def __init__(self, layers) -> None:
+    def __init__(self, layers):
         self.layers = layers
 
     @property
     def loader(self):
         """The loader related commands."""
-        from napari.components.experimental.chunk._commands import (
-            LoaderCommands,
-        )
+        from .chunk._commands import LoaderCommands
 
         return LoaderCommands(self.layers)
 
@@ -46,7 +44,7 @@ class ExperimentalNamespace:
         The viewer's layers.
     """
 
-    def __init__(self, layers) -> None:
+    def __init__(self, layers):
         self.layers = layers
 
     @property

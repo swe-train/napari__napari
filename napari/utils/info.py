@@ -1,4 +1,3 @@
-import contextlib
 import os
 import platform
 import subprocess
@@ -9,7 +8,7 @@ import napari
 OS_RELEASE_PATH = "/etc/os-release"
 
 
-def _linux_sys_name() -> str:
+def _linux_sys_name():
     """
     Try to discover linux system name base on /etc/os-release file or lsb_release command output
     https://www.freedesktop.org/software/systemd/man/os-release.html
@@ -29,14 +28,7 @@ def _linux_sys_name() -> str:
                 return f'{data["NAME"]} {data["VERSION_ID"]}'
             return f'{data["NAME"]} (no version)'
 
-    return _linux_sys_name_lsb_release()
-
-
-def _linux_sys_name_lsb_release() -> str:
-    """
-    Try to discover linux system name base on lsb_release command output
-    """
-    with contextlib.suppress(subprocess.CalledProcessError):
+    try:
         res = subprocess.run(
             ["lsb_release", "-d", "-r"], check=True, capture_output=True
         )
@@ -49,28 +41,34 @@ def _linux_sys_name_lsb_release() -> str:
         if not version_str.endswith(data["Release"]):
             version_str += " " + data["Release"]
         return version_str
+    except subprocess.CalledProcessError:
+        pass
     return ""
 
 
-def _sys_name() -> str:
+def _sys_name():
     """
     Discover MacOS or Linux Human readable information. For Linux provide information about distribution.
     """
-    with contextlib.suppress(Exception):
+    try:
         if sys.platform == "linux":
             return _linux_sys_name()
         if sys.platform == "darwin":
-            with contextlib.suppress(subprocess.CalledProcessError):
+            try:
                 res = subprocess.run(
                     ["sw_vers", "-productVersion"],
                     check=True,
                     capture_output=True,
                 )
                 return f"MacOS {res.stdout.decode().strip()}"
+            except subprocess.CalledProcessError:
+                pass
+    except Exception:
+        pass
     return ""
 
 
-def sys_info(as_html: bool = False) -> str:
+def sys_info(as_html=False):
     """Gathers relevant module versions for troubleshooting purposes.
 
     Parameters
@@ -78,6 +76,10 @@ def sys_info(as_html: bool = False) -> str:
     as_html : bool
         if True, info will be returned as HTML, suitable for a QTextEdit widget
     """
+    from npe2 import PluginManager as Npe2PluginManager
+
+    from napari.plugins import plugin_manager
+
     sys_version = sys.version.replace('\n', ' ')
     text = (
         f"<b>napari</b>: {napari.__version__}<br>"
@@ -105,7 +107,7 @@ def sys_info(as_html: bool = False) -> str:
             f"<b>{API_NAME}</b>: {API_VERSION}<br>"
         )
 
-    except Exception as e:  # noqa BLE001
+    except Exception as e:
         text += f"<b>Qt</b>: Import failed ({e})<br>"
 
     modules = (
@@ -113,11 +115,6 @@ def sys_info(as_html: bool = False) -> str:
         ('scipy', 'SciPy'),
         ('dask', 'Dask'),
         ('vispy', 'VisPy'),
-        ('magicgui', 'magicgui'),
-        ('superqt', 'superqt'),
-        ('in_n_out', 'in-n-out'),
-        ('app_model', 'app-model'),
-        ('npe2', 'npe2'),
     )
 
     loaded = {}
@@ -125,7 +122,7 @@ def sys_info(as_html: bool = False) -> str:
         try:
             loaded[module] = __import__(module)
             text += f"<b>{name}</b>: {loaded[module].__version__}<br>"
-        except Exception as e:  # noqa BLE001
+        except Exception as e:
             text += f"<b>{name}</b>: Import failed ({e})<br>"
 
     text += "<br><b>OpenGL:</b><br>"
@@ -153,18 +150,34 @@ def sys_info(as_html: bool = False) -> str:
         screen_list = QGuiApplication.screens()
         for i, screen in enumerate(screen_list, start=1):
             text += f"  - screen {i}: resolution {screen.geometry().width()}x{screen.geometry().height()}, scale {screen.devicePixelRatio()}<br>"
-    except Exception as e:  # noqa BLE001
+    except Exception as e:
         text += f"  - failed to load screen information {e}"
 
-    text += "<br><b>Settings path:</b><br>"
-    try:
-        from napari.settings import get_settings
+    plugin_manager.discover()
+    plugin_strings = {}
+    for meta in plugin_manager.list_plugin_metadata():
+        plugin_name = meta.get('plugin_name')
+        if plugin_name == 'builtins':
+            continue
+        version = meta.get('version')
+        version_string = f": {version}" if version else ""
+        plugin_strings[plugin_name] = f"  - {plugin_name}{version_string}"
 
-        text += f"  - {get_settings().config_path}"
-    except ValueError:
-        from napari.utils._appdirs import user_config_dir
+    npe2_plugin_manager = Npe2PluginManager.instance()
+    for manifest in npe2_plugin_manager.iter_manifests():
+        plugin_name = manifest.name
+        if plugin_name in ("napari", "builtins"):
+            continue
+        version = manifest.package_version
+        version_string = f": {version}" if version else ""
+        plugin_strings[plugin_name] = f"  - {plugin_name}{version_string}"
 
-        text += f"  - {os.getenv('NAPARI_CONFIG', user_config_dir())}"
+    text += '<br><b>Plugins</b>:'
+    text += (
+        ("<br>" + "<br>".join(sorted(plugin_strings.values())))
+        if plugin_strings
+        else '  None'
+    )
 
     if not as_html:
         text = (

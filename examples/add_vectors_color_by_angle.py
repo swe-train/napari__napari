@@ -5,13 +5,12 @@ Add vectors color by angle
 This example generates a set of vectors in a spiral pattern.
 The color of the vectors is mapped to their 'angle' feature.
 
-.. tags:: visualization-advanced
 """
 
-import numpy as np
-from skimage import data
-
 import napari
+from skimage import data
+import numpy as np
+
 
 # create the viewer and window
 viewer = napari.Viewer()
