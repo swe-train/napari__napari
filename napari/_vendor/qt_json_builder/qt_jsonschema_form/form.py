@@ -2,8 +2,8 @@ from copy import deepcopy
 
 from jsonschema.validators import validator_for
 
-from . import widgets
-from .defaults import compute_defaults
+from napari._vendor.qt_json_builder.qt_jsonschema_form import widgets
+from napari._vendor.qt_json_builder.qt_jsonschema_form.defaults import compute_defaults
 
 
 def get_widget_state(schema, state=None):
@@ -24,6 +24,7 @@ class WidgetBuilder:
         },
         "object": {
             "object": widgets.ObjectSchemaWidget,
+            "horizontal_object": widgets.HorizontalObjectSchemaWidget,
             "enum": widgets.EnumSchemaWidget,
             "plugins": widgets.PluginWidget,
             "shortcuts": widgets.ShortcutsWidget,
@@ -118,6 +119,9 @@ class WidgetBuilder:
 
         if "enum" in schema:
             default_variant = "enum"
+
+        if schema.get("description"):
+            description = schema["description"]
 
         widget_variant = ui_schema.get('ui:widget', default_variant)
         widget_cls = self.widget_map[schema_type][widget_variant]

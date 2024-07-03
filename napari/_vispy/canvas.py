@@ -4,8 +4,8 @@ from weakref import WeakSet
 
 from vispy.scene import SceneCanvas, Widget
 
-from ..utils.colormaps.standardize_color import transform_color
-from .utils.gl import get_max_texture_sizes
+from napari._vispy.utils.gl import get_max_texture_sizes
+from napari.utils.colormaps.standardize_color import transform_color
 
 
 class VispyCanvas(SceneCanvas):
@@ -23,8 +23,7 @@ class VispyCanvas(SceneCanvas):
 
     _instances = WeakSet()
 
-    def __init__(self, *args, **kwargs):
-
+    def __init__(self, *args, **kwargs) -> None:
         # Since the base class is frozen we must create this attribute
         # before calling super().__init__().
         self.max_texture_sizes = None
@@ -59,7 +58,7 @@ class VispyCanvas(SceneCanvas):
         self._set_theme_change(event.value)
 
     def _set_theme_change(self, theme: str):
-        from ..utils.theme import get_theme
+        from napari.utils.theme import get_theme
 
         # Note 1. store last requested theme color, in case we need to reuse it
         # when clearing the background_color_override, without needing to
@@ -92,5 +91,7 @@ class VispyCanvas(SceneCanvas):
     def _process_mouse_event(self, event):
         """Ignore mouse wheel events which have modifiers."""
         if event.type == 'mouse_wheel' and len(event.modifiers) > 0:
+            return
+        if event.handled:
             return
         super()._process_mouse_event(event)

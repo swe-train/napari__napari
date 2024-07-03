@@ -1,3 +1,4 @@
+import hashlib
 import os
 import sys
 from functools import partial
@@ -5,12 +6,12 @@ from typing import Callable, Optional
 
 import appdirs
 
-from napari._version import __version_tuple__
+PREFIX_PATH = os.path.realpath(sys.prefix)
+
+sha_short = f"{os.path.basename(PREFIX_PATH)}_{hashlib.sha1(PREFIX_PATH.encode()).hexdigest()}"
 
 _appname = 'napari'
 _appauthor = False
-
-version_string = '.'.join(str(x) for x in __version_tuple__[:3])
 
 
 # all of these also take an optional "version" argument ... but if we want
@@ -21,10 +22,10 @@ user_data_dir: Callable[[], str] = partial(
     appdirs.user_data_dir, _appname, _appauthor
 )
 user_config_dir: Callable[[], str] = partial(
-    appdirs.user_config_dir, _appname, _appauthor
+    appdirs.user_config_dir, _appname, _appauthor, sha_short
 )
 user_cache_dir: Callable[[], str] = partial(
-    appdirs.user_cache_dir, _appname, _appauthor, version_string
+    appdirs.user_cache_dir, _appname, _appauthor, sha_short
 )
 user_state_dir: Callable[[], str] = partial(
     appdirs.user_state_dir, _appname, _appauthor

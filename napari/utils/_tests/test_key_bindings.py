@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from .. import key_bindings
-from ..key_bindings import (
+from napari.utils import key_bindings
+from napari.utils.key_bindings import (
     KeymapHandler,
     KeymapProvider,
     _bind_keymap,
@@ -71,7 +71,7 @@ def test_bind_key():
         return 42
 
     bind_key(kb, 'A', forty_two)
-    assert kb == dict(A=forty_two)
+    assert kb == {"A": forty_two}
 
     # overwrite
     def spam():
@@ -81,7 +81,7 @@ def test_bind_key():
         bind_key(kb, 'A', spam)
 
     bind_key(kb, 'A', spam, overwrite=True)
-    assert kb == dict(A=spam)
+    assert kb == {"A": spam}
 
     # unbind
     bind_key(kb, 'A', None)
@@ -107,7 +107,7 @@ def test_bind_key_decorator():
     def foo():
         ...
 
-    assert kb == dict(A=foo)
+    assert kb == {"A": foo}
 
 
 def test_keymap_provider():
@@ -160,7 +160,7 @@ class Foo(KeymapProvider):
         'D': ...,
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.keymap = {
             'B': lambda x: setattr(x, 'B', None),  # overwrite
             'E': lambda x: setattr(x, 'E', None),  # new entry

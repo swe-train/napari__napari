@@ -10,7 +10,7 @@ from urllib.request import Request, urlopen
 
 from npe2 import PackageMetadata
 
-from .utils import normalized_name
+from napari.plugins.utils import normalized_name
 
 PyPIname = str
 
@@ -21,12 +21,9 @@ def _user_agent() -> str:
     import platform
 
     from napari import __version__
+    from napari.utils import misc
 
-    from ..utils import misc
-
-    if misc.running_as_bundled_app():
-        env = 'briefcase'
-    elif misc.running_as_constructor_app():
+    if misc.running_as_constructor_app():
         env = 'constructor'
     elif misc.in_jupyter():
         env = 'jupyter'
@@ -83,11 +80,9 @@ def iter_napari_plugin_info() -> Iterator[Tuple[PackageMetadata, bool]]:
         _info = cast(Dict[str, str], dict(info))
         # TODO: use this better.
         # this would require changing the api that qt_plugin_dialog expects to
-        # receive (and it doesn't currently receive this from the hub API)
+        # receive
         _info.pop("display_name", None)
 
-        # TODO: I'd prefer we didn't normalize the name here, but it's needed for
-        # parity with the hub api.  change this later.
         name = _info.pop("name")
         meta = PackageMetadata(name=normalized_name(name), **_info)
         yield meta, (name in conda)

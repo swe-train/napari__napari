@@ -19,8 +19,7 @@ from numpydoc.docscrape import NumpyDocString as _NumpyDocString
 
 from napari.components.dims import Dims
 from napari.layers import Image
-
-from .viewer import Viewer
+from napari.viewer import Viewer
 
 __all__ = [
     'view_image',
@@ -81,7 +80,7 @@ def _merge_layer_viewer_sigs_docs(func):
     func : callable
         The same function, with merged metadata.
     """
-    from .utils.misc import _combine_signatures
+    from napari.utils.misc import _combine_signatures
 
     # get the `Viewer.add_*` method
     layer_string = func.__name__.replace("view_", "")
@@ -226,7 +225,7 @@ def imshow(
     interpolation3d='linear',
     rendering='mip',
     depiction='volume',
-    iso_threshold=0.5,
+    iso_threshold=None,
     attenuation=0.05,
     name=None,
     metadata=None,
@@ -242,13 +241,14 @@ def imshow(
     cache=True,
     plane=None,
     experimental_clipping_planes=None,
+    custom_interpolation_kernel_2d=None,
     viewer=None,
     title='napari',
     ndisplay=2,
     order=(),
     axis_labels=(),
     show=True,
-) -> Tuple[Viewer, List[Image]]:
+) -> Tuple[Viewer, List["Image"]]:
     """Load data into an Image layer and return the Viewer and Layer.
 
     Parameters
@@ -379,7 +379,9 @@ def imshow(
         Each dict defines a clipping plane in 3D in data coordinates.
         Valid dictionary keys are {'position', 'normal', and 'enabled'}.
         Values on the negative side of the normal are discarded if the plane is enabled.
-    viewer: Viewer object, optional, by default None.
+    custom_interpolation_kernel_2d : np.ndarray
+        Convolution kernel used with the 'custom' interpolation mode in 2D rendering.
+    viewer : Viewer object, optional, by default None.
     title : string, optional
         The title of the viewer window. By default 'napari'.
     ndisplay : {2, 3}, optional
@@ -402,41 +404,42 @@ def imshow(
         argument is given.
     """
 
-    kwargs = dict(
-        viewer=viewer,
-        channel_axis=channel_axis,
-        rgb=rgb,
-        colormap=colormap,
-        contrast_limits=contrast_limits,
-        gamma=gamma,
-        interpolation2d=interpolation2d,
-        interpolation3d=interpolation3d,
-        rendering=rendering,
-        depiction=depiction,
-        iso_threshold=iso_threshold,
-        attenuation=attenuation,
-        name=name,
-        metadata=metadata,
-        scale=scale,
-        translate=translate,
-        rotate=rotate,
-        shear=shear,
-        affine=affine,
-        opacity=opacity,
-        blending=blending,
-        visible=visible,
-        multiscale=multiscale,
-        cache=cache,
-        plane=plane,
-        experimental_clipping_planes=experimental_clipping_planes,
-        title=title,
-        ndisplay=ndisplay,
-        order=order,
-        axis_labels=axis_labels,
-        show=show,
-    )
+    kwargs = {
+        'viewer': viewer,
+        'channel_axis': channel_axis,
+        'rgb': rgb,
+        'colormap': colormap,
+        'contrast_limits': contrast_limits,
+        'gamma': gamma,
+        'interpolation2d': interpolation2d,
+        'interpolation3d': interpolation3d,
+        'rendering': rendering,
+        'depiction': depiction,
+        'iso_threshold': iso_threshold,
+        'attenuation': attenuation,
+        'name': name,
+        'metadata': metadata,
+        'scale': scale,
+        'translate': translate,
+        'rotate': rotate,
+        'shear': shear,
+        'affine': affine,
+        'opacity': opacity,
+        'blending': blending,
+        'visible': visible,
+        'multiscale': multiscale,
+        'cache': cache,
+        'plane': plane,
+        'experimental_clipping_planes': experimental_clipping_planes,
+        'custom_interpolation_kernel_2d': custom_interpolation_kernel_2d,
+        'title': title,
+        'ndisplay': ndisplay,
+        'order': order,
+        'axis_labels': axis_labels,
+        'show': show,
+    }
 
-    args = tuple([data])
+    args = (data,)
 
     viewer, layers = _make_viewer_then(
         'add_image',

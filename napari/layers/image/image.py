@@ -4,43 +4,42 @@ from __future__ import annotations
 
 import types
 import warnings
-from typing import TYPE_CHECKING, List, Sequence, Union
+from typing import TYPE_CHECKING, List, Sequence, Tuple, Union
 
 import numpy as np
 from scipy import ndimage as ndi
 
-from ...utils import config
-from ...utils._dtype import get_dtype_limits, normalize_dtype
-from ...utils.colormaps import AVAILABLE_COLORMAPS
-from ...utils.events import Event
-from ...utils.events.event import WarningEmitter
-from ...utils.migrations import rename_argument
-from ...utils.naming import magic_name
-from ...utils.translations import trans
-from .._data_protocols import LayerDataProtocol
-from .._multiscale_data import MultiScaleData
-from ..base import Layer, no_op
-from ..intensity_mixin import IntensityVisualizationMixin
-from ..utils.layer_utils import calc_data_range
-from ..utils.plane import SlicingPlane
-from ._image_constants import (
+from napari.layers._data_protocols import LayerDataProtocol
+from napari.layers._multiscale_data import MultiScaleData
+from napari.layers.base import Layer
+from napari.layers.image._image_constants import (
     ImageRendering,
     Interpolation,
-    Mode,
     VolumeDepiction,
 )
-from ._image_mouse_bindings import (
+from napari.layers.image._image_mouse_bindings import (
     move_plane_along_normal as plane_drag_callback,
-)
-from ._image_mouse_bindings import (
     set_plane_position as plane_double_click_callback,
 )
-from ._image_slice import ImageSlice
-from ._image_slice_data import ImageSliceData
-from ._image_utils import guess_multiscale, guess_rgb
+from napari.layers.image._image_slice import ImageSlice
+from napari.layers.image._image_slice_data import ImageSliceData
+from napari.layers.image._image_utils import guess_multiscale, guess_rgb
+from napari.layers.intensity_mixin import IntensityVisualizationMixin
+from napari.layers.utils.layer_utils import calc_data_range
+from napari.layers.utils.plane import SlicingPlane
+from napari.utils import config
+from napari.utils._dtype import get_dtype_limits, normalize_dtype
+from napari.utils.colormaps import AVAILABLE_COLORMAPS
+from napari.utils.events import Event
+from napari.utils.events.event import WarningEmitter
+from napari.utils.events.event_utils import connect_no_arg
+from napari.utils.migrations import rename_argument
+from napari.utils.misc import reorder_after_dim_reduction
+from napari.utils.naming import magic_name
+from napari.utils.translations import trans
 
 if TYPE_CHECKING:
-    from ...components.experimental.chunk import ChunkRequest
+    from napari.components.experimental.chunk import ChunkRequest
 
 
 # It is important to contain at least one abstractmethod to properly exclude this class
@@ -76,8 +75,11 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
     gamma : float
         Gamma correction for determining colormap linearity. Defaults to 1.
     interpolation : str
-        Interpolation mode used by vispy. Must be one of our supported
-        modes.
+        Interpolation mode used by vispy. Must be one of our supported modes.
+        'custom' is a special mode for 2D interpolation in which a regular grid
+        of samples are taken from the texture around a position using 'linear'
+        interpolation before being multiplied with a custom interpolation kernel
+        (provided with 'custom_interpolation_kernel_2d').
     rendering : str
         Rendering mode used by vispy. Must be one of our supported
         modes.
@@ -138,6 +140,8 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
         Each dict defines a clipping plane in 3D in data coordinates.
         Valid dictionary keys are {'position', 'normal', and 'enabled'}.
         Values on the negative side of the normal are discarded if the plane is enabled.
+    custom_interpolation_kernel_2d : np.ndarray
+        Convolution kernel used with the 'custom' interpolation mode in 2D rendering.
 
     Attributes
     ----------
@@ -181,8 +185,11 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
     gamma : float
         Gamma correction for determining colormap linearity.
     interpolation : str
-        Interpolation mode used by vispy. Must be one of our supported
-        modes.
+        Interpolation mode used by vispy. Must be one of our supported modes.
+        'custom' is a special mode for 2D interpolation in which a regular grid
+        of samples are taken from the texture around a position using 'linear'
+        interpolation before being multiplied with a custom interpolation kernel
+        (provided with 'custom_interpolation_kernel_2d').
     rendering : str
         Rendering mode used by vispy. Must be one of our supported
         modes.
@@ -197,6 +204,8 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
         {'position', 'normal', 'thickness'}.
     experimental_clipping_planes : ClippingPlaneList
         Clipping planes defined in data coordinates, used to clip the volume.
+    custom_interpolation_kernel_2d : np.ndarray
+        Convolution kernel used with the 'custom' interpolation mode in 2D rendering.
 
     Notes
     -----
@@ -210,7 +219,12 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
 
     _colormaps = AVAILABLE_COLORMAPS
 
-    @rename_argument("interpolation", "interpolation2d", "0.6.0")
+    @rename_argument(
+        from_name="interpolation",
+        to_name="interpolation2d",
+        version="0.6.0",
+        since_version="0.4.17",
+    )
     def __init__(
         self,
         data,
@@ -222,7 +236,7 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
         interpolation2d='nearest',
         interpolation3d='linear',
         rendering='mip',
-        iso_threshold=0.5,
+        iso_threshold=None,
         attenuation=0.05,
         name=None,
         metadata=None,
@@ -239,7 +253,8 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
         depiction='volume',
         plane=None,
         experimental_clipping_planes=None,
-    ):
+        custom_interpolation_kernel_2d=None,
+    ) -> None:
         if name is None and data is not None:
             name = magic_name(data)
 
@@ -266,8 +281,9 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
                     "'rgb' was set to True but data does not have suitable dimensions."
                 )
             )
-        elif rgb is None:
+        if rgb is None:
             rgb = rgb_guess
+        self.rgb = rgb
 
         # Determine dimensionality of the data
         ndim = len(data.shape)
@@ -293,26 +309,26 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
         )
 
         self.events.add(
-            mode=Event,
             interpolation=WarningEmitter(
                 trans._(
                     "'layer.events.interpolation' is deprecated please use `interpolation2d` and `interpolation3d`",
                     deferred=True,
                 ),
-                type='select',
+                type_name='select',
             ),
             interpolation2d=Event,
             interpolation3d=Event,
             rendering=Event,
+            plane=Event,
             depiction=Event,
             iso_threshold=Event,
             attenuation=Event,
+            custom_interpolation_kernel_2d=Event,
         )
 
         self._array_like = True
 
         # Set data
-        self.rgb = rgb
         self._data = data
         if self.multiscale:
             self._data_level = len(self.data) - 1
@@ -330,7 +346,7 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
         else:
             self._data_level = 0
             self._thumbnail_level = 0
-        displayed_axes = self._displayed_axes
+        displayed_axes = self._slice_input.displayed
         self.corner_pixels[1][displayed_axes] = self.level_shapes[
             self._data_level
         ][displayed_axes]
@@ -339,10 +355,8 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
 
         # Set contrast limits, colormaps and plane parameters
         self._gamma = gamma
-        self._iso_threshold = iso_threshold
         self._attenuation = attenuation
         self._plane = SlicingPlane(thickness=1, enabled=False, draggable=True)
-        self._mode = Mode.PAN_ZOOM
         # Whether to calculate clims on the next set_view_slice
         self._should_calc_clims = False
         if contrast_limits is None:
@@ -358,11 +372,16 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
         else:
             self.contrast_limits_range = contrast_limits
         self._contrast_limits = tuple(self.contrast_limits_range)
+        if iso_threshold is None:
+            cmin, cmax = self.contrast_limits_range
+            self._iso_threshold = cmin + (cmax - cmin) / 2
+        else:
+            self._iso_threshold = iso_threshold
         # using self.colormap = colormap uses the setter in *derived* classes,
         # where the intention here is to use the base setter, so we use the
         # _set_colormap method. This is important for Labels layers, because
         # we don't want to use get_color before set_view_slice has been
-        # triggered (self._update_dims(), below).
+        # triggered (self.refresh(), below).
         self._set_colormap(colormap)
         self.contrast_limits = self._contrast_limits
         self._interpolation2d = Interpolation.NEAREST
@@ -373,9 +392,11 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
         self.depiction = depiction
         if plane is not None:
             self.plane = plane
+        connect_no_arg(self.plane.events, self.events, 'plane')
+        self.custom_interpolation_kernel_2d = custom_interpolation_kernel_2d
 
         # Trigger generation of view slice and thumbnail
-        self._update_dims()
+        self.refresh()
 
     def _new_empty_slice(self):
         """Initialize the current slice to an empty image."""
@@ -388,21 +409,20 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
     def _get_empty_image(self):
         """Get empty image to use as the default before data is loaded."""
         if self.rgb:
-            return np.zeros((1,) * self._ndisplay + (3,))
-        else:
-            return np.zeros((1,) * self._ndisplay)
+            return np.zeros((1,) * self._slice_input.ndisplay + (3,))
 
-    def _get_order(self):
-        """Return the order of the displayed dimensions."""
+        return np.zeros((1,) * self._slice_input.ndisplay)
+
+    def _get_order(self) -> Tuple[int]:
+        """Return the ordered displayed dimensions, but reduced to fit in the slice space."""
+        order = reorder_after_dim_reduction(self._slice_input.displayed)
         if self.rgb:
             # if rgb need to keep the final axis fixed during the
             # transpose. The index of the final axis depends on how many
             # axes are displayed.
-            return self._dims_displayed_order + (
-                max(self._dims_displayed_order) + 1,
-            )
-        else:
-            return self._dims_displayed_order
+            return (*order, max(order) + 1)
+
+        return order
 
     @property
     def _data_view(self):
@@ -454,7 +474,7 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
         self.events.data(value=self.data)
         if self._keep_auto_contrast:
             self.reset_contrast_limits()
-        self._set_editable()
+        self._reset_editable()
 
     def _get_ndim(self):
         """Determine number of dimensions of the layer."""
@@ -528,7 +548,7 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
         vispy/gloo/glsl/misc/spatial_filters.frag
 
         Options include:
-        'bessel', 'bicubic', 'linear', 'blackman', 'catrom', 'gaussian',
+        'bessel', 'cubic', 'linear', 'blackman', 'catrom', 'gaussian',
         'hamming', 'hanning', 'hermite', 'kaiser', 'lanczos', 'mitchell',
         'nearest', 'spline16', 'spline36'
 
@@ -546,7 +566,7 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
         )
         return str(
             self._interpolation2d
-            if self._ndisplay == 2
+            if self._slice_input.ndisplay == 2
             else self._interpolation3d
         )
 
@@ -560,7 +580,7 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
             category=DeprecationWarning,
             stacklevel=2,
         )
-        if self._ndisplay == 3:
+        if self._slice_input.ndisplay == 3:
             self.interpolation3d = interpolation
         else:
             if interpolation == 'bilinear':
@@ -587,6 +607,13 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
                     "'bilinear' interpolation is not valid for interpolation2d. Did you mean 'linear' instead ?",
                 ),
             )
+        if value == 'bicubic':
+            value = 'cubic'
+            warnings.warn(
+                trans._("'bicubic' is deprecated. Please use 'cubic' instead"),
+                category=DeprecationWarning,
+                stacklevel=2,
+            )
         self._interpolation2d = Interpolation(value)
         self.events.interpolation2d(value=self._interpolation2d)
         self.events.interpolation(value=self._interpolation2d)
@@ -597,6 +624,17 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
 
     @interpolation3d.setter
     def interpolation3d(self, value):
+        if value == 'custom':
+            raise NotImplementedError(
+                'custom interpolation is not implemented yet for 3D rendering'
+            )
+        if value == 'bicubic':
+            value = 'cubic'
+            warnings.warn(
+                trans._("'bicubic' is deprecated. Please use 'cubic' instead"),
+                category=DeprecationWarning,
+                stacklevel=2,
+            )
         self._interpolation3d = Interpolation(value)
         self.events.interpolation3d(value=self._interpolation3d)
         self.events.interpolation(value=self._interpolation3d)
@@ -655,6 +693,18 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
     @plane.setter
     def plane(self, value: Union[dict, SlicingPlane]):
         self._plane.update(value)
+        self.events.plane()
+
+    @property
+    def custom_interpolation_kernel_2d(self):
+        return self._custom_interpolation_kernel_2d
+
+    @custom_interpolation_kernel_2d.setter
+    def custom_interpolation_kernel_2d(self, value):
+        if value is None:
+            value = [[1]]
+        self._custom_interpolation_kernel_2d = np.array(value, np.float32)
+        self.events.custom_interpolation_kernel_2d()
 
     @property
     def loaded(self):
@@ -664,44 +714,6 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
         for the current slice has not been loaded.
         """
         return self._slice.loaded
-
-    @property
-    def mode(self) -> str:
-        """str: Interactive mode
-
-        Interactive mode. The normal, default mode is PAN_ZOOM, which
-        allows for normal interactivity with the canvas.
-
-        TRANSFORM allows for manipulation of the layer transform.
-        """
-        return str(self._mode)
-
-    _drag_modes = {Mode.TRANSFORM: no_op, Mode.PAN_ZOOM: no_op}
-
-    _move_modes = {
-        Mode.TRANSFORM: no_op,
-        Mode.PAN_ZOOM: no_op,
-    }
-    _cursor_modes = {
-        Mode.TRANSFORM: 'standard',
-        Mode.PAN_ZOOM: 'standard',
-    }
-
-    @mode.setter
-    def mode(self, mode):
-        mode, changed = self._mode_setter_helper(mode, Mode)
-        if not changed:
-            return
-        assert mode is not None, mode
-
-        if mode == Mode.PAN_ZOOM:
-            self.help = ''
-        else:
-            self.help = trans._(
-                'hold <space> to pan/zoom, hold <shift> to preserve aspect ratio and rotate in 45° increments'
-            )
-
-        self.events.mode(mode=mode)
 
     def _raw_to_displayed(self, raw):
         """Determine displayed image from raw image.
@@ -724,7 +736,7 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
     def _set_view_slice(self):
         """Set the view given the indices to slice with."""
         self._new_empty_slice()
-        not_disp = self._dims_not_displayed
+        not_disp = self._slice_input.not_displayed
 
         # Check if requested slice outside of data range
         indices = np.array(self._slice_indices)
@@ -744,8 +756,8 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
         self._empty = False
 
         if self.multiscale:
-            if self._ndisplay == 3:
-                # If 3d redering just show lowest level of multiscale
+            if self._slice_input.ndisplay == 3:
+                # If 3d rendering just show lowest level of multiscale
                 warnings.warn(
                     trans._(
                         'Multiscale rendering is only supported in 2D. In 3D, only the lowest resolution scale is displayed',
@@ -770,12 +782,12 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
             indices[not_disp] = downsampled_indices
 
             scale = np.ones(self.ndim)
-            for d in self._dims_displayed:
+            for d in self._slice_input.displayed:
                 scale[d] = self.downsample_factors[self.data_level][d]
             self._transforms['tile2data'].scale = scale
 
-            if self._ndisplay == 2:
-                for d in self._displayed_axes:
+            if self._slice_input.ndisplay == 2:
+                for d in self._slice_input.displayed:
                     indices[d] = slice(
                         self.corner_pixels[0, d],
                         self.corner_pixels[1, d],
@@ -831,7 +843,9 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
     def _SliceDataClass(self):
         # Use special ChunkedSlideData for async.
         if config.async_loading:
-            from .experimental._chunked_slice_data import ChunkedSliceData
+            from napari.layers.image.experimental._chunked_slice_data import (
+                ChunkedSliceData,
+            )
 
             return ChunkedSliceData
         return ImageSliceData
@@ -899,7 +913,7 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
 
         image = self._slice.thumbnail.view
 
-        if self._ndisplay == 3 and self.ndim > 2:
+        if self._slice_input.ndisplay == 3 and self.ndim > 2:
             image = np.max(image, axis=0)
 
         # float16 not supported by ndi.zoom
@@ -917,12 +931,9 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
         )
         zoom_factor = tuple(new_shape / image.shape[:2])
         if self.rgb:
-            # warning filter can be removed with scipy 1.4
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                downsampled = ndi.zoom(
-                    image, zoom_factor + (1,), prefilter=False, order=0
-                )
+            downsampled = ndi.zoom(
+                image, zoom_factor + (1,), prefilter=False, order=0
+            )
             if image.shape[2] == 4:  # image is RGBA
                 colormapped = np.copy(downsampled)
                 colormapped[..., 3] = downsampled[..., 3] * self.opacity
@@ -939,12 +950,9 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
                     alpha = np.full(downsampled.shape[:2] + (1,), self.opacity)
                 colormapped = np.concatenate([downsampled, alpha], axis=2)
         else:
-            # warning filter can be removed with scipy 1.4
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                downsampled = ndi.zoom(
-                    image, zoom_factor, prefilter=False, order=0
-                )
+            downsampled = ndi.zoom(
+                image, zoom_factor, prefilter=False, order=0
+            )
             low, high = self.contrast_limits
             downsampled = np.clip(downsampled, low, high)
             color_range = high - low
@@ -952,7 +960,7 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
                 downsampled = (downsampled - low) / color_range
             downsampled = downsampled**self.gamma
             color_array = self.colormap.map(downsampled.ravel())
-            colormapped = color_array.reshape(downsampled.shape + (4,))
+            colormapped = color_array.reshape((*downsampled.shape, 4))
             colormapped[..., 3] *= self.opacity
         self.thumbnail = colormapped
 
@@ -979,17 +987,14 @@ class _ImageBase(IntensityVisualizationMixin, Layer):
         coord = np.round(coord).astype(int)
 
         raw = self._slice.image.raw
-        if self.rgb:
-            shape = raw.shape[:-1]
-        else:
-            shape = raw.shape
+        shape = raw.shape[:-1] if self.rgb else raw.shape
 
         if self.ndim < len(coord):
             # handle 3D views of 2D data by omitting extra coordinate
             offset = len(coord) - len(shape)
-            coord = coord[[d + offset for d in self._dims_displayed]]
+            coord = coord[[d + offset for d in self._slice_input.displayed]]
         else:
-            coord = coord[self._dims_displayed]
+            coord = coord[self._slice_input.displayed]
 
         if all(0 <= c < s for c, s in zip(coord, shape)):
             value = raw[tuple(coord)]
@@ -1089,13 +1094,14 @@ class Image(_ImageBase):
                 'attenuation': self.attenuation,
                 'gamma': self.gamma,
                 'data': self.data,
+                'custom_interpolation_kernel_2d': self.custom_interpolation_kernel_2d,
             }
         )
         return state
 
 
 if config.async_octree:
-    from ..image.experimental.octree_image import _OctreeImageBase
+    from napari.layers.image.experimental.octree_image import _OctreeImageBase
 
     class Image(Image, _OctreeImageBase):
         pass
@@ -1105,7 +1111,7 @@ Image.__doc__ = _ImageBase.__doc__
 
 
 class _weakref_hide:
-    def __init__(self, obj):
+    def __init__(self, obj) -> None:
         import weakref
 
         self.obj = weakref.ref(obj)

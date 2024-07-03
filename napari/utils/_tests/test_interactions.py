@@ -1,6 +1,6 @@
 import pytest
 
-from ..interactions import Shortcut
+from napari.utils.interactions import Shortcut
 
 
 @pytest.mark.parametrize(
@@ -13,7 +13,6 @@ from ..interactions import Shortcut
     ],
 )
 def test_shortcut_invalid(shortcut, reason):
-
     with pytest.warns(UserWarning):
         Shortcut(shortcut)  # Should be Control-A
 
@@ -28,5 +27,4 @@ def test_minus_shortcut():
 
 
 def test_shortcut_qt():
-
     assert Shortcut('Control-A').qt == 'Control+A'

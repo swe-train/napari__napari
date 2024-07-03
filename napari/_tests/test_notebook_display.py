@@ -4,9 +4,11 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
+from napari._tests.utils import skip_on_win_ci
 from napari.utils import nbscreenshot
 
 
+@skip_on_win_ci
 def test_nbscreenshot(make_napari_viewer):
     """Test taking a screenshot."""
     viewer = make_napari_viewer()
@@ -22,6 +24,7 @@ def test_nbscreenshot(make_napari_viewer):
     assert rich_display_object.image is not None
 
 
+@skip_on_win_ci
 @pytest.mark.parametrize(
     "alt_text_input, expected_alt_text",
     [
@@ -29,7 +32,7 @@ def test_nbscreenshot(make_napari_viewer):
         ("Good alt text", "Good alt text"),
         # Naughty strings https://github.com/minimaxir/big-list-of-naughty-strings
         # ASCII punctuation
-        (r",./;'[]\-=", ',./;&#x27;[]\\-='),  # noqa: W605
+        (r",./;'[]\-=", ',./;&#x27;[]\\-='),
         # ASCII punctuation 2, skipping < because that is interpreted as the start
         # of an HTML element.
         ('>?:"{}|_+', '&gt;?:&quot;{}|_+'),
@@ -37,10 +40,13 @@ def test_nbscreenshot(make_napari_viewer):
         # # Emojis
         ("😍", "😍"),  # emoji 1
         ("👨‍🦰 👨🏿‍🦰 👨‍🦱 👨🏿‍🦱 🦹🏿‍♂️", "👨‍🦰 👨🏿‍🦰 👨‍🦱 👨🏿‍🦱 🦹🏿‍♂️"),  # emoji 2
-        (r"¯\_(ツ)_/¯", '¯\\_(ツ)_/¯'),  # Japanese emoticon  # noqa: W605
+        (r"¯\_(ツ)_/¯", '¯\\_(ツ)_/¯'),  # Japanese emoticon
         # # Special characters
         ("田中さんにあげて下さい", "田中さんにあげて下さい"),  # two-byte characters
-        ("表ポあA鷗ŒéＢ逍Üßªąñ丂㐀𠀀", "表ポあA鷗ŒéＢ逍Üßªąñ丂㐀𠀀"),  # special unicode chars
+        (
+            "表ポあA鷗ŒéＢ逍Üßªąñ丂㐀𠀀",  # noqa: RUF001
+            "表ポあA鷗ŒéＢ逍Üßªąñ丂㐀𠀀",  # noqa: RUF001
+        ),  # special unicode chars
         ("گچپژ", "گچپژ"),  # Persian special characters
         # # Script injection
         ("<script>alert(0)</script>", None),  # script injection 1
@@ -54,3 +60,15 @@ def test_safe_alt_text(alt_text_input, expected_alt_text):
         assert not display_obj.alt_text
     else:
         assert html.escape(display_obj.alt_text) == expected_alt_text
+
+
+def test_invalid_alt_text():
+    with pytest.warns(UserWarning):
+        # because string with only whitespace messes up with the parser
+        display_obj = nbscreenshot(Mock(), alt_text=" ")
+    assert display_obj.alt_text is None
+
+    with pytest.warns(UserWarning):
+        # because string with only whitespace messes up with the parser
+        display_obj = nbscreenshot(Mock(), alt_text="")
+    assert display_obj.alt_text is None

@@ -1,10 +1,12 @@
+import atexit
 import contextlib
 import os
 import sys
 from enum import Enum, auto
+from functools import lru_cache
 from importlib.metadata import PackageNotFoundError, metadata
 from pathlib import Path
-from tempfile import gettempdir
+from tempfile import gettempdir, mkstemp
 from typing import Callable, Dict, List, Literal, Optional, Sequence, Tuple
 
 from npe2 import PackageMetadata, PluginManager
@@ -39,25 +41,37 @@ from qtpy.QtWidgets import (
 from superqt import QElidingLabel
 
 import napari.resources
-
-from ...plugins import plugin_manager
-from ...plugins.hub import iter_hub_plugin_info
-from ...plugins.pypi import iter_napari_plugin_info
-from ...plugins.utils import normalized_name
-from ...settings import get_settings
-from ...utils._appdirs import user_plugin_dir, user_site_packages
-from ...utils.misc import (
+from napari import __version__
+from napari._qt.qt_resources import QColoredSVGIcon
+from napari._qt.qthreading import create_worker
+from napari._qt.widgets.qt_message_popup import WarnPopup
+from napari._qt.widgets.qt_tooltip import QtToolTipLabel
+from napari.plugins import plugin_manager
+from napari.plugins.pypi import _user_agent, iter_napari_plugin_info
+from napari.plugins.utils import normalized_name
+from napari.settings import get_settings
+from napari.utils._appdirs import user_plugin_dir, user_site_packages
+from napari.utils.misc import (
     parse_version,
     running_as_bundled_app,
     running_as_constructor_app,
 )
-from ...utils.translations import trans
-from ..qt_resources import QColoredSVGIcon
-from ..qthreading import create_worker
-from ..widgets.qt_message_popup import WarnPopup
-from ..widgets.qt_tooltip import QtToolTipLabel
+from napari.utils.translations import trans
 
 InstallerTypes = Literal['pip', 'mamba']
+
+
+def _pip_constraints():
+    return (f"napari=={__version__}", "pydantic<2")
+
+
+@lru_cache(maxsize=3)
+def _create_constraints_file(constraints):
+    _, path = mkstemp("-napari-constraints.txt", text=True)
+    with open(path, "w") as f:
+        f.write("\n".join(constraints))
+    atexit.register(os.unlink, path)
+    return path
 
 
 # TODO: add error icon and handle pip install errors
@@ -105,11 +119,12 @@ class Installer(QObject):
                 ]
             )
             env.insert("PYTHONPATH", combined_paths)
+            env.insert("PIP_USER_AGENT_USER_DATA", _user_agent())
         else:
             process.setProgram(installer)
 
         if installer == "mamba":
-            from ..._version import version_tuple
+            from napari._version import version_tuple
 
             # To avoid napari version changing when installing a plugin, we
             # add a pin to the current napari version, that way we can
@@ -189,7 +204,7 @@ class Installer(QObject):
             self._processes[pkg_list] = process
 
         if not self._processes:
-            from ...plugins import plugin_manager
+            from napari.plugins import plugin_manager
 
             plugin_manager.discover()
             plugin_manager.prune()
@@ -230,6 +245,10 @@ class Installer(QObject):
                 cmd.extend(["-c", channel])
         else:
             cmd = ['-m', 'pip', 'install', '--upgrade']
+            cmd += [
+                "--constraint",
+                _create_constraints_file(_pip_constraints()),
+            ]
 
         if (
             running_as_bundled_app()
@@ -323,7 +342,7 @@ class Installer(QObject):
         """
         from qtpy import QT_VERSION
 
-        from ..._version import version_tuple
+        from napari._version import version_tuple
 
         parts = [str(part) for part in version_tuple[:3]]
         napari_version_string = f"napari-{'.'.join(parts)}-"
@@ -333,8 +352,9 @@ class Installer(QObject):
             for file in conda_meta_path.iterdir():
                 fname = file.parts[-1]
                 if (
-                    fname.startswith(napari_version_string)
-                    or fname.startswith(qt_version_string)
+                    fname.startswith(
+                        (napari_version_string, qt_version_string)
+                    )
                 ) and fname.endswith(".json"):
                     return True
         return False
@@ -348,14 +368,14 @@ class PluginListItem(QFrame):
         url: str = '',
         summary: str = '',
         author: str = '',
-        license: str = "UNKNOWN",
+        license: str = "UNKNOWN",  # noqa: A002
         *,
         plugin_name: str = None,
         parent: QWidget = None,
         enabled: bool = True,
         installed: bool = False,
         npe_version=1,
-    ):
+    ) -> None:
         super().__init__(parent)
         self.setup_ui(enabled)
         self.plugin_name.setText(package_name)
@@ -378,7 +398,7 @@ class PluginListItem(QFrame):
             self.action_button.setObjectName("install_button")
 
     def _handle_npe2_plugin(self, npe_version):
-        if npe_version == 1:
+        if npe_version in (None, 1):
             return
         opacity = 0.4 if npe_version == 'shim' else 1
         lbl = trans._('npe1 (adapted)') if npe_version == 'shim' else 'npe2'
@@ -538,7 +558,7 @@ class PluginListItem(QFrame):
 
 
 class QPluginList(QListWidget):
-    def __init__(self, parent: QWidget, installer: Installer):
+    def __init__(self, parent: QWidget, installer: Installer) -> None:
         super().__init__(parent)
         self.installer = installer
         self.setSortingEnabled(True)
@@ -737,7 +757,7 @@ class RefreshState(Enum):
 
 
 class QtPluginDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.refresh_state = RefreshState.DONE
         self.already_installed = set()
@@ -783,7 +803,7 @@ class QtPluginDialog(QDialog):
         # fetch installed
         from npe2 import PluginManager
 
-        from ...plugins import plugin_manager
+        from napari.plugins import plugin_manager
 
         self.already_installed = set()
 
@@ -851,19 +871,9 @@ class QtPluginDialog(QDialog):
         )
 
         # fetch available plugins
-        settings = get_settings()
-        use_hub = (
-            running_as_bundled_app()
-            or running_as_constructor_app()
-            or settings.plugins.plugin_api.name == "napari_hub"
-        )
-        if use_hub:
-            conda_forge = running_as_constructor_app()
-            self.worker = create_worker(
-                iter_hub_plugin_info, conda_forge=conda_forge
-            )
-        else:
-            self.worker = create_worker(iter_napari_plugin_info)
+        get_settings()
+
+        self.worker = create_worker(iter_napari_plugin_info)
 
         self.worker.yielded.connect(self._handle_yield)
         self.worker.finished.connect(self.working_indicator.hide)
@@ -872,11 +882,15 @@ class QtPluginDialog(QDialog):
         self.worker.start()
         if discovered:
             message = trans._(
-                'When installing/uninstalling npe2 plugins, you must restart napari for UI changes to take effect.'
+                'When installing/uninstalling npe2 plugins, '
+                'you must restart napari for UI changes to take effect.'
             )
-            self._warn_dialog = WarnPopup(
-                text=message,
+            self._warn_dialog = WarnPopup(text=message)
+            global_point = self.process_error_indicator.mapToGlobal(
+                self.process_error_indicator.rect().topLeft()
             )
+            global_point = QPoint(global_point.x(), global_point.y() - 75)
+            self._warn_dialog.move(global_point)
             self._warn_dialog.exec_()
 
     def setup_ui(self):
@@ -1018,12 +1032,10 @@ class QtPluginDialog(QDialog):
     def _install_packages(self, packages: Sequence[str] = ()):
         if not packages:
             _packages = self.direct_entry_edit.text()
-            if os.path.exists(_packages):
-                packages = [_packages]
-            else:
-                packages = _packages.split()
+            packages = (
+                [_packages] if os.path.exists(_packages) else _packages.split()
+            )
             self.direct_entry_edit.clear()
-
         if packages:
             self.installer.install(packages)
 

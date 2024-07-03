@@ -1,3 +1,4 @@
+import contextlib
 import inspect
 import re
 import sys
@@ -5,7 +6,7 @@ import warnings
 
 from numpydoc.docscrape import FunctionDoc
 
-from ..utils.translations import trans
+from napari.utils.translations import trans
 
 
 def mouse_wheel_callbacks(obj, event):
@@ -206,11 +207,9 @@ def mouse_release_callbacks(obj, event):
     """
     for func, gen in tuple(obj._mouse_drag_gen.items()):
         obj._persisted_mouse_event[gen].__wrapped__ = event
-        try:
+        with contextlib.suppress(StopIteration):
             # Run last part of the function to trigger release event
             next(gen)
-        except StopIteration:
-            pass
         # Finally delete the generator and stored event
         del obj._mouse_drag_gen[func]
         del obj._persisted_mouse_event[gen]
@@ -258,7 +257,7 @@ class Shortcut:
     instead of -.
     """
 
-    def __init__(self, shortcut: str):
+    def __init__(self, shortcut: str) -> None:
         """
         Parameters
         ----------
@@ -272,7 +271,6 @@ class Shortcut:
                 len(shortcut_key) > 1
                 and shortcut_key not in KEY_SYMBOLS.keys()
             ):
-
                 warnings.warn(
                     trans._(
                         "{shortcut_key} does not seem to be a valid shortcut Key.",

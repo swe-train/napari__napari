@@ -43,9 +43,9 @@ from typing import Callable, Dict
 
 from vispy.util import keys
 
-from ..settings import get_settings
-from ..utils.action_manager import action_manager
-from ..utils.translations import trans
+from napari.settings import get_settings
+from napari.utils.action_manager import action_manager
+from napari.utils.translations import trans
 
 SPECIAL_KEYS = [
     keys.SHIFT,
@@ -191,7 +191,7 @@ def normalize_key_combo(key_combo):
         )
 
     for modifier in modifiers:
-        if modifier in KEY_SUBS.keys():
+        if modifier in KEY_SUBS:
             modifiers.remove(modifier)
             modifier = KEY_SUBS[modifier]
 
@@ -336,7 +336,7 @@ class KeybindingDescriptor:
         Function to bind.
     """
 
-    def __init__(self, func):
+    def __init__(self, func) -> None:
         self.__func__ = func
 
     def __get__(self, instance, cls):
@@ -355,7 +355,7 @@ class KeymapProvider:
         Instance keymap.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.keymap = {}
 
@@ -400,7 +400,7 @@ class KeymapHandler:
         Classes that provide the keymaps for this class to handle.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self._key_release_generators = {}
         self.keymap_providers = []
@@ -458,7 +458,7 @@ class KeymapHandler:
 
         if func is Ellipsis:  # blocker
             return
-        elif not callable(func):
+        if not callable(func):
             raise TypeError(
                 trans._(
                     "expected {func} to be callable",

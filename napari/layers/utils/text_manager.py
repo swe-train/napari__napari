@@ -6,20 +6,24 @@ import numpy as np
 import pandas as pd
 from pydantic import PositiveInt, validator
 
-from ...utils.events import Event, EventedModel
-from ...utils.events.custom_types import Array
-from ...utils.translations import trans
-from ..base._base_constants import Blending
-from ._text_constants import Anchor
-from ._text_utils import get_text_anchors
-from .color_encoding import ColorArray, ColorEncoding, ConstantColorEncoding
-from .layer_utils import _validate_features
-from .string_encoding import (
+from napari.layers.base._base_constants import Blending
+from napari.layers.utils._text_constants import Anchor
+from napari.layers.utils._text_utils import get_text_anchors
+from napari.layers.utils.color_encoding import (
+    ColorArray,
+    ColorEncoding,
+    ConstantColorEncoding,
+)
+from napari.layers.utils.layer_utils import _validate_features
+from napari.layers.utils.string_encoding import (
     ConstantStringEncoding,
     StringArray,
     StringEncoding,
 )
-from .style_encoding import _get_style_values
+from napari.layers.utils.style_encoding import _get_style_values
+from napari.utils.events import Event, EventedModel
+from napari.utils.events.custom_types import Array
+from napari.utils.translations import trans
 
 
 class TextManager(EventedModel):
@@ -88,7 +92,7 @@ class TextManager(EventedModel):
 
     def __init__(
         self, text=None, properties=None, n_text=None, features=None, **kwargs
-    ):
+    ) -> None:
         if n_text is not None:
             _warn_about_deprecated_n_text_parameter()
         if properties is not None:
@@ -105,7 +109,6 @@ class TextManager(EventedModel):
             _warn_about_deprecated_text_parameter()
             kwargs['string'] = text
         super().__init__(**kwargs)
-        self.events.add(values=Event)
         self.apply(features)
 
     @property
@@ -132,7 +135,7 @@ class TextManager(EventedModel):
         self.events.values()
         self.color._apply(features)
         # Trigger the main event for vispy layers.
-        self.events(Event(type='refresh'))
+        self.events(Event(type_name='refresh'))
 
     def refresh_text(self, properties: Dict[str, np.ndarray]):
         """Refresh all of the current text elements using updated properties values
@@ -212,7 +215,7 @@ class TextManager(EventedModel):
         """Copies all encoded values at the given indices."""
         return {
             'string': _get_style_values(self.string, indices),
-            'color': _get_style_values(self.color, indices),
+            'color': _get_style_values(self.color, indices, value_ndim=1),
         }
 
     def _paste(self, *, string: StringArray, color: ColorArray):

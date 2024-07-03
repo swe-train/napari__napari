@@ -22,10 +22,7 @@ def install_lazy(module_name, submodules=None, submod_attrs=None):
     if submod_attrs is None:
         submod_attrs = {}
 
-    if submodules is None:
-        submodules = set()
-    else:
-        submodules = set(submodules)
+    submodules = set() if submodules is None else set(submodules)
 
     attr_to_modules = {
         attr: mod for mod, attrs in submod_attrs.items() for attr in attrs
@@ -43,7 +40,7 @@ def install_lazy(module_name, submodules=None, submod_attrs=None):
 
         if name in submodules:
             return import_module(f'{module_name}.{name}')
-        elif name in attr_to_modules:
+        if name in attr_to_modules:
             try:
                 submod = import_module(
                     f'{module_name}.{attr_to_modules[name]}'
@@ -59,8 +56,8 @@ def install_lazy(module_name, submodules=None, submod_attrs=None):
                 ) from er
             # this is where we allow an attribute error to be raised.
             return getattr(submod, name)
-        else:
-            raise AttributeError(f'No {module_name} attribute {name}')
+
+        raise AttributeError(f'No {module_name} attribute {name}')
 
     def __dir__():
         return __all__
